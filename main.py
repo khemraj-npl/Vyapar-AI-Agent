@@ -13,12 +13,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔐 सुरक्षाको ब्रह्मास्त्र: कोड भित्र की (Key) हरू खुल्ला नराखी सिस्टमबाट तान्ने
+# 🔐 सुरक्षा र प्रमाणिकरण
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "VYAPAR_AI_MESSENGER_SECRET_TOKEN_2083")
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")  # 🚀 अब सिधै गुगलको आधिकारिक की चल्छ
 
-# 🏢 बौद्धिक सेल्स एम्प्लोई नियमहरू (System Instruction)
 HONS_SYSTEM_PROMPT = """
 You are a smart, friendly, and persuasive AI Sales Employee working for Himalayan Online Service (HONS), a premier Internet Service Provider in Nepal. 
 
@@ -33,30 +32,26 @@ TONE: Friendly, professional, natural Nepali (or Roman Nepali based on customer 
 
 def get_smart_ai_response(user_message: str) -> str:
     try:
-        # ओपनराउटरको कडा र फ्री एआई सिस्टम (सच्चिएको यूआरएल स्पेलिङ)
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json"
-        }
+        # 🚀 गुगल जेमिनीको आधिकारिक फ्री र बुलेट स्पीड एपीआई यूआरएल
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        headers = {"Content-Type": "application/json"}
         payload = {
-            "model": "google/gemini-2.5-flash",
-            "messages": [
-                {"role": "system", "content": HONS_SYSTEM_PROMPT},
-                {"role": "user", "content": user_message}
-            ]
+            "contents": [{
+                "parts": [{
+                    "text": f"{HONS_SYSTEM_PROMPT}\n\nCustomer: {user_message}\nAI Employee:"
+                }]
+            }]
         }
         response = requests.post(url, json=payload, headers=headers)
         res_json = response.json()
-        return res_json['choices'][0]['message']['content'].strip()
+        return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
     except Exception as e:
-        print(f"❌ OpenRouter Error: {e}")
-        return "नमस्कार साहुजी! हजुरको म्यासेज प्राप्त भयो। हाम्रो HONS टिमले हजुरलाई तुरुन्तै सम्पर्क गर्नेछ।"
+        print(f"❌ Gemini API Error: {e}")
+        return "नमस्कार! हजुरको म्यासेज प्राप्त भयो। हाम्रो HONS टिमले हजुरलाई तुरुन्तै सम्पर्क गर्नेछ।"
 
 @app.get("/")
 def home():
-    headers = {"ngrok-skip-browser-warning": "true"}
-    return Response(content='{"status": "Smart AI Sales Agent is Live on Cloud!"}', media_type="application/json", headers=headers)
+    return {"status": "Smart AI Sales Agent is Live on Google Gemini Engine!"}
 
 @app.get("/api/v1/webhook/facebook")
 def facebook_verify(
@@ -80,21 +75,16 @@ async def facebook_message(request: Request):
                         incoming_message = messaging_event["message"].get("text", "")
                         
                         print(f"🔹 Received text: '{incoming_message}' from {sender_id}")
-                        
                         reply_text = get_smart_ai_response(incoming_message)
                         
                         fb_url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-                        headers = {"Content-Type": "application/json"}
                         payload = {
                             "recipient": {"id": str(sender_id)},
                             "message": {"text": reply_text},
                             "messaging_type": "RESPONSE"
                         }
-                        
-                        res = requests.post(fb_url, json=payload, headers=headers)
-                        print(f"🔸 Sales AI Response Sent. Status: {res.status_code}")
-                        
+                        requests.post(fb_url, json=payload, headers={"Content-Type": "application/json"})
+                        print("🔸 Sales AI Response Sent successfully via Gemini.")
     except Exception as e:
         print(f"❌ Error handling sales message: {e}")
-        
     return {"status": "EVENT_RECEIVED"}
