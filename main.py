@@ -2,7 +2,6 @@ import os
 import requests
 from fastapi import FastAPI, Query, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
-import google.generativeai as google_ai  # 🚀 पुराना र बलिया मोडलहरू सिधै तान्ने प्याकेज
 
 app = FastAPI(title="Vyapar AI - Smart Sales Intelligence Agent")
 
@@ -18,9 +17,6 @@ app.add_middleware(
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "VYAPAR_AI_MESSENGER_SECRET_TOKEN_2083")
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
-# 🤖 गुगल एआई कन्फिगर गरियो
-google_ai.configure(api_key=GEMINI_API_KEY)
 
 # 🏢 हन्स (HONS) को व्यापार प्रवर्द्धन गर्ने नियमहरू
 HONS_SYSTEM_PROMPT = (
@@ -38,19 +34,33 @@ HONS_SYSTEM_PROMPT = (
 )
 
 def get_smart_ai_response(user_message: str) -> str:
-    """गुगलको आधिकारिक मोडल इन्जिन सिधै कल गर्ने फंक्शन"""
+    """सिधै गुगलको आधिकारिक र स्थायी v1 गेटवे हिट गर्ने सफा र ग्यारेन्टी फंक्सन"""
     try:
-        # 🚀 यूआरएलको झन्झट पूरै खत्तम, यसले सिधै गुगलको भित्री इन्जिन समात्छ
-        model = google_ai.GenerativeModel(
-            model_name="gemini-pro",  # 🎯 फ्री एकाउन्टमा शत-प्रतिशत चल्ने स्टेबल मोडल
-            generation_config={"temperature": 0.7, "max_output_tokens": 300}
-        )
+        # 🚀 यो गुगलको सबैभन्दा स्टेबल र सुरक्षित यूआरएल हो जसलाई कसैले ब्लक गर्न सक्दैन
+        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        headers = {"Content-Type": "application/json"}
         
-        full_prompt = f"System Instructions:\n{HONS_SYSTEM_PROMPT}\n\nCustomer Message: {user_message}\nAI Sales Agent Response:"
-        response = model.generate_content(full_prompt)
+        # 🎯 गुगलले तुरुन्तै बुझ्ने गरी सफा अंग्रेजीमा पेलोड फम्र्याट
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": f"System Instructions & Context:\n{HONS_SYSTEM_PROMPT}\n\nCustomer Message: '{user_message}'\n\nAI Executive Response:"
+                }]
+            }],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 300
+            }
+        }
         
-        if response.text:
-            return response.text.strip()
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        res_json = response.json()
+        
+        # 🔍 डेटा सुरक्षित तरिकाले तान्ने कडी
+        if 'candidates' in res_json and len(res_json['candidates']) > 0:
+            return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+            
+        print(f"⚠️ API Error Response: {res_json}")
         return "नमस्कार! हजुरको म्यासेज प्राप्त भयो। हाम्रो HONS टिमले हजुरलाई तुरुन्तै सम्पर्क गर्नेछ।"
         
     except Exception as e:
@@ -59,7 +69,7 @@ def get_smart_ai_response(user_message: str) -> str:
 
 @app.get("/")
 def home():
-    return {"status": "Smart AI Sales Agent is Live and Ready!"}
+    return {"status": "Smart AI Sales Agent is Live on Gemini v1 Engine!"}
 
 @app.get("/api/v1/webhook/facebook")
 def facebook_verify(
@@ -82,7 +92,7 @@ async def facebook_message(request: Request):
                         sender_id = messaging_event["sender"]["id"]
                         incoming_message = messaging_event["message"]["text"]
                         
-                        print(f"🔹 Received message: '{incoming_message}'")
+                        print(f"🔹 Received text: '{incoming_message}'")
                         reply_text = get_smart_ai_response(incoming_message)
                         
                         fb_url = f"https://graph.facebook.com/v20.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
