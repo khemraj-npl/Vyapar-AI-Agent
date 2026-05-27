@@ -39,7 +39,7 @@ HONS_SYSTEM_PROMPT = (
 def get_smart_ai_response(user_message: str) -> str:
     """गुगल जेमिनी इन्जिनबाट बुलेट स्पीडमा बुद्धिमानी सेल्स रिप्लाई निकाल्ने फंक्सन"""
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         headers = {"Content-Type": "application/json"}
         
         # 🎯 शत-प्रतिशत ग्यारेन्टी चल्ने आधिकारिक गुगल जेमिनी पेलोड फम्र्याट
