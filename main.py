@@ -1,69 +1,98 @@
+# main.py
+
 import os
-import asyncio
 import logging
+from fastapi import FastAPI
 from threading import Thread
 
-import uvicorn
-from fastapi import FastAPI
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+)
 
 from ai_employee_engine import ai_employee_reply
 
-logging.basicConfig(level=logging.INFO)
+# ---------------- LOGGING ----------------
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+
 logger = logging.getLogger(__name__)
 
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# ---------------- FASTAPI ----------------
 
-web_app = FastAPI()
+app = FastAPI()
 
+@app.get("/")
+def home():
+    return {"status": "Vyapar AI Employee is running"}
 
-@web_app.get("/")
-def health_check():
-    return {
-        "status": "ok",
-        "service": "Vyapar AI Telegram Bot"
-    }
+# ---------------- TELEGRAM BOT ----------------
 
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+if not TELEGRAM_BOT_TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
+
+# ---------------- COMMANDS ----------------
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Namaste 🙏 Ma Vyapar AI employee ho. Hajurlai k help garna sakchu?"
+        "Namaste 🙏 Ma Vyapar AI Employee ho.\nTapailai k help garna sakchu?"
     )
 
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Malai business, products, customer support, sales ra marketing ko question sodhna saknuhuncha."
+    )
+
+# ---------------- MESSAGE HANDLER ----------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.message.from_user.id)
-    message = update.message.text
+
+    user_message = update.message.text
+    user_id = str(update.effective_user.id)
+
+    logger.info(f"Message from {user_id}: {user_message}")
 
     try:
-        reply = ai_employee_reply(user_id=user_id, message=message)
-        await update.message.reply_text(reply)
+        ai_response = ai_employee_reply(user_id, user_message)
+
+        await update.message.reply_text(ai_response)
+
     except Exception as e:
-        logger.exception("AI reply error")
+        logger.error(f"Error: {e}")
+
         await update.message.reply_text(
-            "Maile bujhna sakina 😅 Ek choti feri pathaidinus."
+            "Sorry 😅 Ahile system ma issue aayo. Kripaya feri try garnus."
         )
 
-
-def run_health_server():
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(web_app, host="0.0.0.0", port=port)
-
+# ---------------- RUN BOT ----------------
 
 def run_bot():
-    if not TOKEN:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
 
-    app = Application.builder().token(TOKEN).build()
+    logger.info("Starting Vyapar AI Employee Bot...")
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    logger.info("Starting Vyapar AI Telegram Bot...")
-    app.run_polling()
+    telegram_app.add_handler(CommandHandler("start", start_command))
+    telegram_app.add_handler(CommandHandler("help", help_command))
 
+    telegram_app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
 
-if __name__ == "__main__":
-    Thread(target=run_health_server, daemon=True).start()
-    run_bot()
+    logger.info("Bot is running...")
+
+    telegram_app.run_polling(drop_pending_updates=True)
+
+# ---------------- START THREAD ----------------
+
+bot_thread = Thread(target=run_bot)
+bot_thread.start()
