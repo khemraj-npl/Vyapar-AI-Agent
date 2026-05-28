@@ -11,7 +11,7 @@ import re
 import logging
 from typing import Literal
 
-from google import genai
+from google.generativeai as genai
 from google.genai import types
 
 from products import search_products, format_product_for_ai
