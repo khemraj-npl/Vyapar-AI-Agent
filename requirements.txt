@@ -1,5 +1,3 @@
-python-telegram-bot==20.7
-google-generativeai
-python-dotenv
-fastapi
-uvicorn
+python-telegram-bot==22.7
+google-genai==2.6.0
+python-dotenv==1.2.2
