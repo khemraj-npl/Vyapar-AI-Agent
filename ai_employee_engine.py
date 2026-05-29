@@ -1,5 +1,5 @@
 from __future__ import annotations
-from memory import get_memory, update_memory, add_context, memory_to_prompt
+
 import logging
 import os
 from typing import Any
@@ -7,6 +7,8 @@ from typing import Any
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
+
+from memory import get_memory, update_memory, add_context, memory_to_prompt
 from prompts import SYSTEM_PROMPT
 
 load_dotenv()
@@ -86,6 +88,24 @@ def is_quota_error(error: Exception) -> bool:
     return any(keyword in error_text for keyword in quota_keywords)
 
 
+def update_basic_memory(user_id, text: str):
+    memory = get_memory(user_id)
+
+    if "khemraj" in text or "खेमराज" in text:
+        update_memory(user_id, "name", "Khemraj Adhikari")
+        add_context(user_id, "User introduced themselves as Khemraj Adhikari.")
+
+    if "isp" in text or "internet" in text or "इन्टरनेट" in text:
+        update_memory(user_id, "business_type", "ISP / Internet Service Provider")
+        add_context(user_id, "User is discussing ISP / internet service business.")
+
+    if "ai employee" in text or "smart intelligence" in text or "स्मार्ट ai" in text:
+        update_memory(user_id, "last_topic", "Smart AI Employee Development")
+        add_context(user_id, "User is building a smart intelligent AI employee system.")
+
+    return memory
+
+
 async def ai_employee_reply(
     user_text: str,
     user_id: str | int | None = None,
@@ -98,7 +118,8 @@ async def ai_employee_reply(
 
     text = user_text.lower().strip()
 
-    # Fast replies (Gemini call नगरी)
+    update_basic_memory(user_id, text)
+
     if text in ["hello", "hi", "hey", "namaste", "namaskar", "नमस्ते"]:
         return (
             "नमस्ते! 🙏 म Vyapar AI हुँ। "
@@ -119,6 +140,15 @@ async def ai_employee_reply(
     if text in ["?", "??", "???"]:
         return "कृपया आफ्नो प्रश्न अलि स्पष्ट रूपमा लेख्नुहोस् 😊"
 
+    memory_context = memory_to_prompt(user_id)
+
+    prompt_with_memory = f"""
+{memory_context}
+
+User message:
+{user_text}
+"""
+
     logger.info(
         "AI request from user_id=%s text=%s",
         user_id,
@@ -130,7 +160,7 @@ async def ai_employee_reply(
 
         response = await client.aio.models.generate_content(
             model=MODEL_NAME,
-            contents=user_text,
+            contents=prompt_with_memory,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 temperature=0.45,
