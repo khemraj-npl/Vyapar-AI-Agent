@@ -1,9 +1,10 @@
+import asyncio
 import logging
 import os
-from threading import Thread
 
 from dotenv import load_dotenv
-from flask import Flask
+from fastapi import FastAPI
+import uvicorn
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -20,22 +21,17 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-web_app = Flask(__name__)
+web_app = FastAPI()
 
 
-@web_app.route("/")
-def home():
-    return "Vyapar AI is running"
+@web_app.get("/")
+async def home():
+    return {"status": "ok", "service": "Vyapar AI is running"}
 
 
-@web_app.route("/health")
-def health():
-    return {"status": "ok", "service": "Vyapar AI"}
-
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    web_app.run(host="0.0.0.0", port=port)
+@web_app.get("/health")
+async def health():
+    return {"status": "healthy"}
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -55,11 +51,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
 
-def main():
+async def run_telegram_bot():
     if not TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
-
-    Thread(target=run_web_server, daemon=True).start()
 
     logger.info("Starting Vyapar AI Telegram Bot...")
 
@@ -68,10 +62,38 @@ def main():
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    logger.info("Bot is running...")
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
 
-    app.run_polling(drop_pending_updates=True)
+    logger.info("Telegram bot polling started.")
+
+    while True:
+        await asyncio.sleep(3600)
+
+
+async def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+
+    config = uvicorn.Config(
+        web_app,
+        host="0.0.0.0",
+        port=port,
+        log_level="info",
+    )
+
+    server = uvicorn.Server(config)
+
+    logger.info(f"Starting web server on port {port}...")
+    await server.serve()
+
+
+async def main():
+    await asyncio.gather(
+        run_web_server(),
+        run_telegram_bot(),
+    )
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
