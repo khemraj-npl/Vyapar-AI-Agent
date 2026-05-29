@@ -1,7 +1,11 @@
+```python
 import logging
 import os
+from threading import Thread
 
 from dotenv import load_dotenv
+from flask import Flask
+
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -22,17 +26,44 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# -----------------------------
+# Render Health Server
+# -----------------------------
+web_app = Flask(__name__)
+
+
+@web_app.route("/")
+def home():
+    return "Vyapar AI Employee Running"
+
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(
+        host="0.0.0.0",
+        port=port,
+    )
+
+
+# -----------------------------
+# Telegram Commands
+# -----------------------------
+async def start_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     await update.message.reply_text(
         "Namaste 🙏 Ma Vyapar AI Employee ho.\nHajurlai k help garna sakchu?"
     )
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     user_message = update.message.text
 
     reply = await ai_employee_reply(
@@ -49,9 +80,20 @@ def main():
 
     logger.info("Starting Vyapar AI Employee Bot...")
 
+    # Start health server for Render
+    Thread(
+        target=run_web_server,
+        daemon=True,
+    ).start()
+
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(
+        CommandHandler(
+            "start",
+            start_command,
+        )
+    )
 
     app.add_handler(
         MessageHandler(
@@ -67,3 +109,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
