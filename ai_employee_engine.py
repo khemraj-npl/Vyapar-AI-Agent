@@ -16,13 +16,11 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 FALLBACK_MESSAGE = (
-    "🙏 Vyapar AI ahile technical issue ko karan response generate garna सकेन। "
-    "कृपया केही समयपछि फेरि प्रयास गर्नुहोस्।"
+    "🙏 Vyapar AI अहिले response generate गर्न सकेन। कृपया केही समयपछि फेरि प्रयास गर्नुहोस्।"
 )
 
 QUOTA_MESSAGE = (
-    "🙏 Vyapar AI को AI quota अहिले limit मा पुगेको छ। "
-    "कृपया केही समयपछि फेरि प्रयास गर्नुहोस्।"
+    "🙏 Vyapar AI को AI quota अहिले limit मा पुगेको छ। कृपया केही समयपछि फेरि प्रयास गर्नुहोस्।"
 )
 
 _client = None
@@ -98,7 +96,34 @@ async def ai_employee_reply(
     if not user_text:
         return "कृपया message पठाउनुहोस्।"
 
-    logger.info("AI request from user_id=%s text=%s", user_id, user_text)
+    text = user_text.lower().strip()
+
+    # Fast replies (Gemini call नगरी)
+    if text in ["hello", "hi", "hey", "namaste", "namaskar", "नमस्ते"]:
+        return (
+            "नमस्ते! 🙏 म Vyapar AI हुँ। "
+            "म व्यवसाय र ग्राहक सहायता गर्न बनाइएको smart AI employee हुँ। "
+            "हजुरलाई कसरी सहयोग गर्न सक्छु?"
+        )
+
+    if text in [
+        "thanks",
+        "thank you",
+        "thankyou",
+        "dhanyabad",
+        "dhanyawaad",
+        "धन्यवाद",
+    ]:
+        return "स्वागत छ 😊। थप सहयोग चाहियो भने भन्नुहोस्।"
+
+    if text in ["?", "??", "???"]:
+        return "कृपया आफ्नो प्रश्न अलि स्पष्ट रूपमा लेख्नुहोस् 😊"
+
+    logger.info(
+        "AI request from user_id=%s text=%s",
+        user_id,
+        user_text,
+    )
 
     try:
         client = get_client()
@@ -116,10 +141,17 @@ async def ai_employee_reply(
         reply = extract_response_text(response)
 
         if not reply:
-            logger.warning("Empty Gemini response for user_id=%s", user_id)
+            logger.warning(
+                "Empty Gemini response for user_id=%s",
+                user_id,
+            )
             return FALLBACK_MESSAGE
 
-        logger.info("AI reply generated for user_id=%s length=%s", user_id, len(reply))
+        logger.info(
+            "AI reply generated for user_id=%s length=%s",
+            user_id,
+            len(reply),
+        )
 
         return reply
 
