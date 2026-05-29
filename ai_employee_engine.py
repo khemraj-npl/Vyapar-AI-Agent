@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from typing import Any
@@ -8,6 +7,7 @@ from typing import Any
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
+from prompts import SYSTEM_PROMPT
 
 load_dotenv()
 
@@ -15,16 +15,8 @@ logger = logging.getLogger(__name__)
 
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-SYSTEM_PROMPT = """
-You are Vyapar AI Employee.
-
-You help Nepali business users.
-Reply in simple Nepali or English.
-Be smart, practical, and friendly.
-"""
-
 FALLBACK_MESSAGE = (
-    "Maile bujhna sakina 😅 Ek choti feri pathaidinus."
+    "Kripaya ali clear garera bhannus 😊"
 )
 
 _client = None
@@ -45,10 +37,6 @@ def get_client():
 
 
 def extract_response_text(response: Any) -> str:
-    """
-    Safe Gemini response extractor
-    """
-
     try:
         if hasattr(response, "text") and response.text:
             return response.text.strip()
@@ -97,7 +85,7 @@ async def ai_employee_reply(
             contents=user_text,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
-                temperature=0.5,
+                temperature=0.55,
                 max_output_tokens=500,
             ),
         )
@@ -126,9 +114,6 @@ async def ai_employee_reply(
 
 
 def clear_memory(user_id=None):
-    """
-    Placeholder for future memory system
-    """
     return
 
 
