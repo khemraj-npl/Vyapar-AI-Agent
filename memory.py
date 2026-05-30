@@ -1,66 +1,61 @@
-import sqlite3
-
-DB_NAME = "memory.db"
+from memory_db import get_user, save_user_memory
 
 
-def get_connection():
-    return sqlite3.connect(DB_NAME)
+user_memory = {}
 
 
-def init_db():
-    conn = get_connection()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id TEXT PRIMARY KEY,
-            name TEXT,
-            business_type TEXT,
-            last_topic TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+def get_memory(user_id):
+    user_id = str(user_id)
 
+    db_memory = get_user(user_id)
 
-def get_user(user_id):
-    conn = get_connection()
-    cursor = conn.execute(
-        "SELECT user_id, name, business_type, last_topic FROM users WHERE user_id = ?",
-        (str(user_id),),
-    )
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
-        return {
-            "user_id": str(user_id),
-            "name": None,
-            "business_type": None,
-            "last_topic": None,
+    if user_id not in user_memory:
+        user_memory[user_id] = {
+            "name": db_memory.get("name"),
+            "business_type": db_memory.get("business_type"),
+            "last_topic": db_memory.get("last_topic"),
+            "important_context": [],
         }
 
-    return {
-        "user_id": row[0],
-        "name": row[1],
-        "business_type": row[2],
-        "last_topic": row[3],
-    }
+    return user_memory[user_id]
 
 
-def save_user_memory(user_id, name=None, business_type=None, last_topic=None):
-    existing = get_user(user_id)
+def update_memory(user_id, key, value):
+    user_id = str(user_id)
+    memory = get_memory(user_id)
 
-    name = name if name is not None else existing.get("name")
-    business_type = business_type if business_type is not None else existing.get("business_type")
-    last_topic = last_topic if last_topic is not None else existing.get("last_topic")
+    memory[key] = value
 
-    conn = get_connection()
-    conn.execute("""
-        INSERT INTO users (user_id, name, business_type, last_topic)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            name = excluded.name,
-            business_type = excluded.business_type,
-            last_topic = excluded.last_topic
-    """, (str(user_id), name, business_type, last_topic))
-    conn.commit()
-    conn.close()
+    if key == "name":
+        save_user_memory(user_id, name=value)
+
+    if key == "business_type":
+        save_user_memory(user_id, business_type=value)
+
+    if key == "last_topic":
+        save_user_memory(user_id, last_topic=value)
+
+    return memory
+
+
+def add_context(user_id, context):
+    memory = get_memory(user_id)
+
+    if context not in memory["important_context"]:
+        memory["important_context"].append(context)
+
+    memory["important_context"] = memory["important_context"][-5:]
+
+    return memory
+
+
+def memory_to_prompt(user_id):
+    memory = get_memory(user_id)
+
+    return f"""
+User Memory:
+- Name: {memory.get("name")}
+- Business Type: {memory.get("business_type")}
+- Last Topic: {memory.get("last_topic")}
+- Important Context: {memory.get("important_context")}
+"""
