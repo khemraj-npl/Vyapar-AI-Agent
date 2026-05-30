@@ -3,4 +3,3 @@ google-genai
 python-dotenv==1.2.2
 fastapi
 uvicorn
-flask
