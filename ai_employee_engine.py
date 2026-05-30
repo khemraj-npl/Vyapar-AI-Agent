@@ -33,6 +33,7 @@ def get_client():
 
     if _client is None:
         api_key = os.getenv("GEMINI_API_KEY")
+
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY missing")
 
@@ -50,12 +51,14 @@ def extract_response_text(response: Any) -> str:
 
     try:
         candidates = getattr(response, "candidates", [])
+
         if candidates:
             parts = getattr(candidates[0].content, "parts", [])
             texts = []
 
             for part in parts:
                 text = getattr(part, "text", None)
+
                 if text:
                     texts.append(text)
 
@@ -71,17 +74,16 @@ def extract_response_text(response: Any) -> str:
 def is_quota_error(error: Exception) -> bool:
     error_text = str(error).lower()
 
-    return any(
-        keyword in error_text
-        for keyword in [
-            "429",
-            "resource_exhausted",
-            "quota",
-            "rate limit",
-            "rate_limit",
-            "free_tier_requests",
-        ]
-    )
+    quota_keywords = [
+        "429",
+        "resource_exhausted",
+        "quota",
+        "rate limit",
+        "rate_limit",
+        "free_tier_requests",
+    ]
+
+    return any(keyword in error_text for keyword in quota_keywords)
 
 
 def update_basic_memory(user_id, text: str):
@@ -90,7 +92,9 @@ def update_basic_memory(user_id, text: str):
     facts = extract_memory_facts(text)
     contexts = facts_to_context(facts)
 
-    for field in [
+    logger.info("EXTRACTED FACTS for user_id=%s: %s", user_id, facts)
+
+    memory_fields = [
         "name",
         "business_type",
         "last_topic",
@@ -98,14 +102,31 @@ def update_basic_memory(user_id, text: str):
         "company_name",
         "phone",
         "package_interest",
-    ]:
+    ]
+
+    for field in memory_fields:
         if facts.get(field):
+            logger.info(
+                "Saving memory for user_id=%s: %s=%s",
+                user_id,
+                field,
+                facts[field],
+            )
             update_memory(user_id, field, facts[field])
 
     for context in contexts:
+        logger.info(
+            "Adding memory context for user_id=%s: %s",
+            user_id,
+            context,
+        )
         add_context(user_id, context)
 
-    return memory
+    updated_memory = get_memory(user_id)
+
+    logger.info("UPDATED MEMORY for user_id=%s: %s", user_id, updated_memory)
+
+    return updated_memory
 
 
 def local_fast_reply(text: str) -> str | None:
@@ -180,6 +201,12 @@ Current User Message:
         user_id,
         intent,
         user_text,
+    )
+
+    logger.info(
+        "PROMPT MEMORY CONTEXT for user_id=%s: %s",
+        user_id,
+        memory_context,
     )
 
     try:
