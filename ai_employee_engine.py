@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
 
+from business_settings import business_context_to_prompt
 from memory import get_memory, update_memory, add_context, memory_to_prompt
 from prompts import SYSTEM_PROMPT
 
@@ -106,20 +107,7 @@ def update_basic_memory(user_id, text: str):
     return memory
 
 
-async def ai_employee_reply(
-    user_text: str,
-    user_id: str | int | None = None,
-) -> str:
-
-    user_text = user_text.strip()
-
-    if not user_text:
-        return "कृपया message पठाउनुहोस्।"
-
-    text = user_text.lower().strip()
-
-    update_basic_memory(user_id, text)
-
+def local_fast_reply(text: str) -> str | None:
     if text in ["hello", "hi", "hey", "namaste", "namaskar", "नमस्ते"]:
         return (
             "नमस्ते! 🙏 म Vyapar AI हुँ। "
@@ -140,12 +128,36 @@ async def ai_employee_reply(
     if text in ["?", "??", "???"]:
         return "कृपया आफ्नो प्रश्न अलि स्पष्ट रूपमा लेख्नुहोस् 😊"
 
-    memory_context = memory_to_prompt(user_id)
+    return None
 
-    prompt_with_memory = f"""
+
+async def ai_employee_reply(
+    user_text: str,
+    user_id: str | int | None = None,
+) -> str:
+
+    user_text = user_text.strip()
+
+    if not user_text:
+        return "कृपया message पठाउनुहोस्।"
+
+    text = user_text.lower().strip()
+
+    update_basic_memory(user_id, text)
+
+    fast_reply = local_fast_reply(text)
+    if fast_reply:
+        return fast_reply
+
+    memory_context = memory_to_prompt(user_id)
+    business_context = business_context_to_prompt()
+
+    prompt_with_context = f"""
+{business_context}
+
 {memory_context}
 
-User message:
+Current User Message:
 {user_text}
 """
 
@@ -160,11 +172,11 @@ User message:
 
         response = await client.aio.models.generate_content(
             model=MODEL_NAME,
-            contents=prompt_with_memory,
+            contents=prompt_with_context,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 temperature=0.45,
-                max_output_tokens=350,
+                max_output_tokens=450,
             ),
         )
 
