@@ -10,6 +10,7 @@ from google.genai import errors, types
 
 from business_settings import business_context_to_prompt
 from memory import get_memory, update_memory, add_context, memory_to_prompt
+from intent_engine import detect_intent, intent_to_prompt
 from prompts import SYSTEM_PROMPT
 
 load_dotenv()
