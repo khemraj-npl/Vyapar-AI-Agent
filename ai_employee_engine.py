@@ -10,9 +10,10 @@ from google.genai import errors, types
 
 from business_settings import business_context_to_prompt
 from intent_engine import detect_intent, intent_to_prompt
+from knowledge_base import catalog_to_prompt
 from memory import get_memory, update_memory, add_context, memory_to_prompt
 from memory_extractor import extract_memory_facts, facts_to_context
-from knowledge_base import catalog_to_prompt
+from products import search_products, format_product_for_ai
 from prompts import SYSTEM_PROMPT
 
 load_dotenv()
@@ -32,7 +33,6 @@ def get_client():
 
     if _client is None:
         api_key = os.getenv("GEMINI_API_KEY")
-
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY missing")
 
@@ -50,14 +50,12 @@ def extract_response_text(response: Any) -> str:
 
     try:
         candidates = getattr(response, "candidates", [])
-
         if candidates:
             parts = getattr(candidates[0].content, "parts", [])
             texts = []
 
             for part in parts:
                 text = getattr(part, "text", None)
-
                 if text:
                     texts.append(text)
 
@@ -73,16 +71,17 @@ def extract_response_text(response: Any) -> str:
 def is_quota_error(error: Exception) -> bool:
     error_text = str(error).lower()
 
-    quota_keywords = [
-        "429",
-        "resource_exhausted",
-        "quota",
-        "rate limit",
-        "rate_limit",
-        "free_tier_requests",
-    ]
-
-    return any(keyword in error_text for keyword in quota_keywords)
+    return any(
+        keyword in error_text
+        for keyword in [
+            "429",
+            "resource_exhausted",
+            "quota",
+            "rate limit",
+            "rate_limit",
+            "free_tier_requests",
+        ]
+    )
 
 
 def update_basic_memory(user_id, text: str):
@@ -91,7 +90,7 @@ def update_basic_memory(user_id, text: str):
     facts = extract_memory_facts(text)
     contexts = facts_to_context(facts)
 
-    memory_fields = [
+    for field in [
         "name",
         "business_type",
         "last_topic",
@@ -99,16 +98,15 @@ def update_basic_memory(user_id, text: str):
         "company_name",
         "phone",
         "package_interest",
-    ]
-
-    for field in memory_fields:
+    ]:
         if facts.get(field):
             update_memory(user_id, field, facts[field])
 
     for context in contexts:
         add_context(user_id, context)
 
-    return get_memory(user_id)
+    return memory
+
 
 def local_fast_reply(text: str) -> str | None:
     if text in ["hello", "hi", "hey", "namaste", "namaskar", "नमस्ते"]:
@@ -118,7 +116,14 @@ def local_fast_reply(text: str) -> str | None:
             "हजुरलाई कसरी सहयोग गर्न सक्छु?"
         )
 
-    if text in ["thanks", "thank you", "thankyou", "dhanyabad", "dhanyawaad", "धन्यवाद"]:
+    if text in [
+        "thanks",
+        "thank you",
+        "thankyou",
+        "dhanyabad",
+        "dhanyawaad",
+        "धन्यवाद",
+    ]:
         return "स्वागत छ 😊। थप सहयोग चाहियो भने भन्नुहोस्।"
 
     if text in ["?", "??", "???"]:
@@ -151,10 +156,16 @@ async def ai_employee_reply(
     business_context = business_context_to_prompt()
     knowledge_context = catalog_to_prompt()
 
+    matched_products = search_products(user_text)
+    product_context = format_product_for_ai(matched_products)
+
     prompt_with_context = f"""
 {business_context}
 
 {knowledge_context}
+
+Product Catalog Match:
+{product_context}
 
 {memory_context}
 
