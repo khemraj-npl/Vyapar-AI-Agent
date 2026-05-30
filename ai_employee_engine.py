@@ -12,6 +12,7 @@ from business_settings import business_context_to_prompt
 from intent_engine import detect_intent, intent_to_prompt
 from memory import get_memory, update_memory, add_context, memory_to_prompt
 from memory_extractor import extract_memory_facts, facts_to_context
+from knowledge_base import catalog_to_prompt
 from prompts import SYSTEM_PROMPT
 
 load_dotenv()
@@ -144,9 +145,12 @@ async def ai_employee_reply(
 
     memory_context = memory_to_prompt(user_id)
     business_context = business_context_to_prompt()
+    knowledge_context = catalog_to_prompt()
 
     prompt_with_context = f"""
 {business_context}
+
+{knowledge_context}
 
 {memory_context}
 
