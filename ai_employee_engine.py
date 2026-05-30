@@ -9,8 +9,9 @@ from google import genai
 from google.genai import errors, types
 
 from business_settings import business_context_to_prompt
-from memory import get_memory, update_memory, add_context, memory_to_prompt
 from intent_engine import detect_intent, intent_to_prompt
+from memory import get_memory, update_memory, add_context, memory_to_prompt
+from memory_extractor import extract_memory_facts, facts_to_context
 from prompts import SYSTEM_PROMPT
 
 load_dotenv()
@@ -27,11 +28,15 @@ _client = None
 
 def get_client():
     global _client
+
     if _client is None:
         api_key = os.getenv("GEMINI_API_KEY")
+
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY missing")
+
         _client = genai.Client(api_key=api_key)
+
     return _client
 
 
@@ -44,12 +49,20 @@ def extract_response_text(response: Any) -> str:
 
     try:
         candidates = getattr(response, "candidates", [])
+
         if candidates:
             parts = getattr(candidates[0].content, "parts", [])
-            texts = [getattr(part, "text", None) for part in parts]
-            texts = [text for text in texts if text]
+            texts = []
+
+            for part in parts:
+                text = getattr(part, "text", None)
+
+                if text:
+                    texts.append(text)
+
             if texts:
                 return "\n".join(texts).strip()
+
     except Exception:
         logger.exception("Response extraction failed")
 
@@ -58,33 +71,36 @@ def extract_response_text(response: Any) -> str:
 
 def is_quota_error(error: Exception) -> bool:
     error_text = str(error).lower()
-    return any(
-        keyword in error_text
-        for keyword in [
-            "429",
-            "resource_exhausted",
-            "quota",
-            "rate limit",
-            "rate_limit",
-            "free_tier_requests",
-        ]
-    )
+
+    quota_keywords = [
+        "429",
+        "resource_exhausted",
+        "quota",
+        "rate limit",
+        "rate_limit",
+        "free_tier_requests",
+    ]
+
+    return any(keyword in error_text for keyword in quota_keywords)
 
 
 def update_basic_memory(user_id, text: str):
     memory = get_memory(user_id)
 
-    if "khemraj" in text or "खेमराज" in text:
-        update_memory(user_id, "name", "Khemraj Adhikari")
-        add_context(user_id, "User introduced themselves as Khemraj Adhikari.")
+    facts = extract_memory_facts(text)
+    contexts = facts_to_context(facts)
 
-    if "isp" in text or "internet" in text or "इन्टरनेट" in text:
-        update_memory(user_id, "business_type", "ISP / Internet Service Provider")
-        add_context(user_id, "User is discussing ISP / internet service business.")
+    if facts.get("name"):
+        update_memory(user_id, "name", facts["name"])
 
-    if "ai employee" in text or "smart intelligence" in text or "स्मार्ट ai" in text:
-        update_memory(user_id, "last_topic", "Smart AI Employee Development")
-        add_context(user_id, "User is building a smart intelligent AI employee system.")
+    if facts.get("business_type"):
+        update_memory(user_id, "business_type", facts["business_type"])
+
+    if facts.get("last_topic"):
+        update_memory(user_id, "last_topic", facts["last_topic"])
+
+    for context in contexts:
+        add_context(user_id, context)
 
     return memory
 
@@ -125,6 +141,7 @@ async def ai_employee_reply(
 
     intent = detect_intent(user_text)
     intent_context = intent_to_prompt(intent)
+
     memory_context = memory_to_prompt(user_id)
     business_context = business_context_to_prompt()
 
@@ -139,7 +156,12 @@ Current User Message:
 {user_text}
 """
 
-    logger.info("AI request from user_id=%s intent=%s text=%s", user_id, intent, user_text)
+    logger.info(
+        "AI request from user_id=%s intent=%s text=%s",
+        user_id,
+        intent,
+        user_text,
+    )
 
     try:
         client = get_client()
@@ -161,6 +183,7 @@ Current User Message:
             return FALLBACK_MESSAGE
 
         logger.info("AI reply generated for user_id=%s length=%s", user_id, len(reply))
+
         return reply
 
     except errors.APIError as e:
@@ -169,14 +192,18 @@ Current User Message:
             getattr(e, "code", None),
             getattr(e, "message", str(e)),
         )
+
         if is_quota_error(e):
             return QUOTA_MESSAGE
+
         return FALLBACK_MESSAGE
 
     except Exception as e:
         logger.exception("Unexpected Gemini error")
+
         if is_quota_error(e):
             return QUOTA_MESSAGE
+
         return FALLBACK_MESSAGE
 
 
@@ -186,6 +213,7 @@ def clear_memory(user_id=None):
 
 async def close_gemini_client():
     global _client
+
     try:
         if _client:
             await _client.aio.aclose()
