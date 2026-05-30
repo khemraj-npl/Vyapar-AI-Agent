@@ -91,20 +91,24 @@ def update_basic_memory(user_id, text: str):
     facts = extract_memory_facts(text)
     contexts = facts_to_context(facts)
 
-    if facts.get("name"):
-        update_memory(user_id, "name", facts["name"])
+    memory_fields = [
+        "name",
+        "business_type",
+        "last_topic",
+        "city",
+        "company_name",
+        "phone",
+        "package_interest",
+    ]
 
-    if facts.get("business_type"):
-        update_memory(user_id, "business_type", facts["business_type"])
-
-    if facts.get("last_topic"):
-        update_memory(user_id, "last_topic", facts["last_topic"])
+    for field in memory_fields:
+        if facts.get(field):
+            update_memory(user_id, field, facts[field])
 
     for context in contexts:
         add_context(user_id, context)
 
-    return memory
-
+    return get_memory(user_id)
 
 def local_fast_reply(text: str) -> str | None:
     if text in ["hello", "hi", "hey", "namaste", "namaskar", "नमस्ते"]:
