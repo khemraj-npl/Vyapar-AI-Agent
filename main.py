@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-
+from memory_db import init_db
 from dotenv import load_dotenv
 from fastapi import FastAPI
 import uvicorn
