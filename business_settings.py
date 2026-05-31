@@ -1,33 +1,35 @@
 from __future__ import annotations
 
-import os
-
-BUSINESS_NAME = os.getenv("BUSINESS_NAME", "Vyapar AI Employee")
-BUSINESS_TYPE = os.getenv("BUSINESS_TYPE", "AI Employee Platform")
-BUSINESS_COUNTRY = os.getenv("BUSINESS_COUNTRY", "Nepal")
-BUSINESS_CITY = os.getenv("BUSINESS_CITY", "Kathmandu")
-BUSINESS_LANGUAGE = os.getenv("BUSINESS_LANGUAGE", "English and Nepali")
-BUSINESS_TAGLINE = os.getenv(
-    "BUSINESS_TAGLINE",
-    "A smart AI employee for customer support, sales, and business assistance.",
-)
-SUPPORT_PHONE = os.getenv("SUPPORT_PHONE", "+977-XXXXXXXXXX")
-SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@example.com")
-SUPPORT_HOURS = os.getenv("SUPPORT_HOURS", "Sun-Fri, 9 AM to 6 PM Nepal Time")
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "Khemraj")
+BUSINESS_NAME = "Himalayan Online Service Pvt. Ltd."
+BUSINESS_TYPE = "Internet Service Provider"
+BUSINESS_LOCATION = "Head Kamal Pokhari, Kathmandu, Nepal"
+BUSINESS_PHONE = "+977-1-4541063"
+BUSINESS_TOLL_FREE = "16600149520"
+BUSINESS_EMAIL = "info@hons.com.np"
+SUPPORT_HOURS = "6:00 AM to 7:00 PM"
+INSTALLATION_CHARGE = "Free"
+ROUTER_ONU = "Free Router / ONU"
 
 
 def business_context_to_prompt() -> str:
     return f"""
-Business profile:
-- Business name: {BUSINESS_NAME}
-- Business type: {BUSINESS_TYPE}
-- Operating country: {BUSINESS_COUNTRY}
-- Primary city: {BUSINESS_CITY}
-- Supported languages: {BUSINESS_LANGUAGE}
-- Brand promise: {BUSINESS_TAGLINE}
-- Customer support phone: {SUPPORT_PHONE}
-- Customer support email: {SUPPORT_EMAIL}
-- Support hours: {SUPPORT_HOURS}
-- Owner/admin: {ADMIN_USERNAME}
+Business Profile:
+- Company Name: {BUSINESS_NAME}
+- Business Type: {BUSINESS_TYPE}
+- Location: {BUSINESS_LOCATION}
+- Phone: {BUSINESS_PHONE}
+- Toll Free: {BUSINESS_TOLL_FREE}
+- Email: {BUSINESS_EMAIL}
+- Support Hours: {SUPPORT_HOURS}
+- Installation Charge: {INSTALLATION_CHARGE}
+- Router/ONU: {ROUTER_ONU}
+
+Important Business Rules:
+- Always identify the company as Himalayan Online Service Pvt. Ltd. when needed.
+- Do not invent package prices.
+- If customer asks package price, use only the available package data.
+- Installation is free.
+- Router/ONU is free.
+- Support is available from 6:00 AM to 7:00 PM.
+- For urgent support, provide phone or toll-free number.
 """.strip()
