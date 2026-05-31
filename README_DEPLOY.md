@@ -1,0 +1,89 @@
+# Vyapar AI Employee - OpenAI Production Build
+
+This build migrates the project from Gemini-first to OpenAI-first and adds:
+
+- FastAPI web service
+- Telegram webhook mode for production
+- Telegram polling mode for local testing
+- OpenAI Responses API primary provider
+- Optional Gemini fallback
+- SQLAlchemy memory database
+- SQLite local development support
+- Postgres production-ready support through `DATABASE_URL`
+- Deterministic memory answers for name/city/phone/company recall
+- Better memory extraction that does not save questions like `Mero naam ke ho?` as facts
+- Knowledge base and product catalog injection
+- Rate limiting and webhook secret validation
+
+## Render Environment Variables
+
+Minimum:
+
+```txt
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_MODE=webhook
+APP_BASE_URL=https://your-render-service.onrender.com
+TELEGRAM_WEBHOOK_SECRET=make_a_long_random_secret
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-5.4-mini
+OPENAI_STORE=false
+DATABASE_URL=sqlite:///./data/vyapar.db
+```
+
+Recommended for real production:
+
+```txt
+DATABASE_URL=your_render_postgres_external_or_internal_url
+```
+
+## Render Settings
+
+Build command:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start command:
+
+```bash
+python main.py
+```
+
+Health check path:
+
+```txt
+/healthz
+```
+
+## Telegram Test Messages
+
+Send these after deployment:
+
+```txt
+Mero naam Khemraj Adhikari ho
+Ma Kathmandu baschhu
+Mero naam ke ho?
+Ma kaha baschhu?
+Ma ISP business chalauchhu
+Internet slow chha, ke garne?
+```
+
+Expected logs:
+
+```txt
+APP_STARTUP
+TELEGRAM_WEBHOOK_SET
+TELEGRAM_UPDATE_RECEIVED
+MEMORY_FACTS_EXTRACTED
+DIRECT_MEMORY_ANSWER
+OPENAI_RESPONSE_OK
+TELEGRAM_REPLY_SENT
+```
+
+## Important Notes
+
+- For local testing, set `TELEGRAM_MODE=polling`.
+- For production Render deployment, use `TELEGRAM_MODE=webhook`.
+- If you keep SQLite on Render without persistent disk, memory can be lost on redeploy. Use Render Postgres for real production memory.
+- Do not commit real API keys to GitHub.

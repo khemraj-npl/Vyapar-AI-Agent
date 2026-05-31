@@ -1,87 +1,155 @@
-from memory_db import get_user, save_user_memory
+from __future__ import annotations
 
-user_memory = {}
+from typing import Any
+
+from sqlalchemy import delete, select
+
+from memory_db import ChatTurn, ConversationContext, UserMemory, get_session
+
+ALLOWED_MEMORY_FIELDS = {
+    "name",
+    "city",
+    "phone",
+    "company_name",
+    "business_type",
+    "package_interest",
+    "last_topic",
+}
 
 
-def get_memory(user_id):
-    user_id = str(user_id)
-
-    db_memory = get_user(user_id)
-
-    if user_id not in user_memory:
-        user_memory[user_id] = {
-            "name": db_memory.get("name"),
-            "business_type": db_memory.get("business_type"),
-            "last_topic": db_memory.get("last_topic"),
-            "city": db_memory.get("city"),
-            "company_name": db_memory.get("company_name"),
-            "phone": db_memory.get("phone"),
-            "package_interest": db_memory.get("package_interest"),
-            "important_context": [],
+def read_memory(user_id: str) -> dict[str, Any]:
+    with get_session() as session:
+        record = session.get(UserMemory, str(user_id))
+        if record is None:
+            return {}
+        return {
+            "user_id": record.user_id,
+            "name": record.name,
+            "city": record.city,
+            "phone": record.phone,
+            "company_name": record.company_name,
+            "business_type": record.business_type,
+            "package_interest": record.package_interest,
+            "last_topic": record.last_topic,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "updated_at": record.updated_at.isoformat() if record.updated_at else None,
         }
 
-    return user_memory[user_id]
+
+def update_memory_from_facts(user_id: str, facts: dict[str, str]) -> None:
+    cleaned = {k: v for k, v in facts.items() if k in ALLOWED_MEMORY_FIELDS and v}
+    if not cleaned:
+        return
+    with get_session() as session:
+        record = session.get(UserMemory, str(user_id))
+        if record is None:
+            record = UserMemory(user_id=str(user_id))
+            session.add(record)
+        for key, value in cleaned.items():
+            setattr(record, key, value.strip())
+        session.flush()
 
 
-def update_memory(user_id, key, value):
-    user_id = str(user_id)
-
-    memory = get_memory(user_id)
-
-    memory[key] = value
-
-    save_user_memory(
-        user_id=user_id,
-        name=memory.get("name"),
-        business_type=memory.get("business_type"),
-        last_topic=memory.get("last_topic"),
-        city=memory.get("city"),
-        company_name=memory.get("company_name"),
-        phone=memory.get("phone"),
-        package_interest=memory.get("package_interest"),
-    )
-
-    return memory
+def save_context(user_id: str, context_text: str, max_items: int = 20) -> None:
+    text_value = (context_text or "").strip()
+    if not text_value:
+        return
+    with get_session() as session:
+        session.add(ConversationContext(user_id=str(user_id), context_text=text_value))
+        session.flush()
+        rows = session.scalars(
+            select(ConversationContext)
+            .where(ConversationContext.user_id == str(user_id))
+            .order_by(ConversationContext.created_at.desc(), ConversationContext.id.desc())
+        ).all()
+        for row in rows[max_items:]:
+            session.delete(row)
 
 
-def add_context(user_id, context):
-    memory = get_memory(user_id)
+def read_contexts(user_id: str, limit: int = 8) -> list[str]:
+    with get_session() as session:
+        rows = session.scalars(
+            select(ConversationContext)
+            .where(ConversationContext.user_id == str(user_id))
+            .order_by(ConversationContext.created_at.desc(), ConversationContext.id.desc())
+            .limit(limit)
+        ).all()
+        return [row.context_text for row in reversed(rows)]
 
-    if context not in memory["important_context"]:
-        memory["important_context"].append(context)
 
-    memory["important_context"] = memory["important_context"][-10:]
+def save_chat_turn(user_id: str, role: str, content: str, keep_last: int = 24) -> None:
+    content = (content or "").strip()
+    if not content:
+        return
+    with get_session() as session:
+        session.add(ChatTurn(user_id=str(user_id), role=role, content=content))
+        session.flush()
+        rows = session.scalars(
+            select(ChatTurn)
+            .where(ChatTurn.user_id == str(user_id))
+            .order_by(ChatTurn.created_at.desc(), ChatTurn.id.desc())
+        ).all()
+        for row in rows[keep_last:]:
+            session.delete(row)
 
-    return memory
+
+def read_recent_chat_history(user_id: str, limit: int = 8) -> list[dict[str, str]]:
+    with get_session() as session:
+        rows = session.scalars(
+            select(ChatTurn)
+            .where(ChatTurn.user_id == str(user_id))
+            .order_by(ChatTurn.created_at.desc(), ChatTurn.id.desc())
+            .limit(limit)
+        ).all()
+        ordered = list(reversed(rows))
+        return [{"role": row.role, "content": row.content} for row in ordered]
 
 
-def memory_to_prompt(user_id):
-    memory = get_memory(user_id)
+def clear_user_data(user_id: str) -> None:
+    with get_session() as session:
+        session.execute(delete(ConversationContext).where(ConversationContext.user_id == str(user_id)))
+        session.execute(delete(ChatTurn).where(ChatTurn.user_id == str(user_id)))
+        record = session.get(UserMemory, str(user_id))
+        if record is not None:
+            session.delete(record)
 
-    return f"""
-User Memory:
 
-Name:
-{memory.get("name")}
+def memory_to_prompt(user_id: str) -> str:
+    memory = read_memory(user_id)
+    contexts = read_contexts(user_id, limit=6)
+    history = read_recent_chat_history(user_id, limit=6)
 
-Business Type:
-{memory.get("business_type")}
+    lines: list[str] = ["Saved user memory:"]
+    if memory:
+        for key in [
+            "name",
+            "city",
+            "phone",
+            "company_name",
+            "business_type",
+            "package_interest",
+            "last_topic",
+        ]:
+            value = memory.get(key)
+            if value:
+                lines.append(f"- {key}: {value}")
+    else:
+        lines.append("- No durable memory stored yet.")
 
-City:
-{memory.get("city")}
+    lines.append("")
+    lines.append("Recent durable user facts/context:")
+    if contexts:
+        lines.extend([f"- {item}" for item in contexts])
+    else:
+        lines.append("- None")
 
-Company Name:
-{memory.get("company_name")}
+    lines.append("")
+    lines.append("Recent conversation turns:")
+    if history:
+        for turn in history:
+            safe_content = turn["content"].replace("\n", " ").strip()
+            lines.append(f"- {turn['role']}: {safe_content}")
+    else:
+        lines.append("- None")
 
-Phone:
-{memory.get("phone")}
-
-Package Interest:
-{memory.get("package_interest")}
-
-Last Topic:
-{memory.get("last_topic")}
-
-Important Context:
-{memory.get("important_context")}
-"""
+    return "\n".join(lines)

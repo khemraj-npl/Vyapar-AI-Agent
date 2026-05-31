@@ -1,114 +1,248 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
+import time
+from collections import defaultdict, deque
+from contextlib import asynccontextmanager
+from typing import Any
 
-from dotenv import load_dotenv
-from fastapi import FastAPI
+import httpx
 import uvicorn
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 
-from ai_employee_engine import ai_employee_reply
-from memory_db import init_db
+from ai_employee_engine import generate_employee_reply, sanitize_user_text
+from memory_db import db_healthcheck, init_db
+from openai_engine import close_openai_client
 
-load_dotenv()
+APP_NAME = "Vyapar AI Employee"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_MODE = os.getenv("TELEGRAM_MODE", "webhook").strip().lower()
+APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+RATE_LIMIT_COUNT = int(os.getenv("RATE_LIMIT_COUNT", "12"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+ALLOWED_CORS_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_CORS_ORIGINS", "").split(",") if o.strip()]
+PORT = int(os.getenv("PORT", "10000"))
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+logger = logging.getLogger("vyapar.main")
 
-logger = logging.getLogger(__name__)
-
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
-web_app = FastAPI()
+RATE_LIMIT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 
 
-@web_app.get("/")
-async def home():
-    return {"status": "ok", "service": "Vyapar AI is running"}
+def _telegram_api_url(method: str) -> str:
+    return f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}"
 
 
-@web_app.get("/health")
-async def health():
-    return {"status": "healthy"}
-
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Namaste 🙏 Ma Vyapar AI ho. Hajurlai k ma help garna sakchu?"
-    )
-
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        user_message = update.message.text
-        user_id = update.effective_user.id if update.effective_user else "unknown"
-
-        logger.info("Received Telegram message from user_id=%s text=%s", user_id, user_message)
-
-        reply = await ai_employee_reply(
-            user_text=user_message,
-            user_id=user_id,
-        )
-
-        await update.message.reply_text(reply)
-
-    except Exception:
-        logger.exception("Telegram message handling failed")
-
-        await update.message.reply_text(
-            "🙏 Vyapar AI अहिले temporary issue मा छ। कृपया केही समयपछि फेरि प्रयास गर्नुहोस्।"
-        )
-
-
-async def run_telegram_bot():
-    if not TOKEN:
+async def send_telegram_request(client: httpx.AsyncClient, method: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if not TELEGRAM_BOT_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
-
-    logger.info("Starting Vyapar AI Telegram Bot...")
-
-    app = Application.builder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling(drop_pending_updates=True)
-
-    logger.info("Telegram bot polling started.")
-
-    while True:
-        await asyncio.sleep(3600)
+    response = await client.post(_telegram_api_url(method), json=payload)
+    response.raise_for_status()
+    data = response.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram API error on {method}: {data}")
+    return data
 
 
-async def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
+async def send_telegram_message(client: httpx.AsyncClient, chat_id: int, text: str) -> None:
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+    await send_telegram_request(client, "sendMessage", payload)
+    logger.info("TELEGRAM_REPLY_SENT chat_id=%s", chat_id)
 
-    config = uvicorn.Config(
-        web_app,
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
+
+async def ensure_webhook(client: httpx.AsyncClient) -> None:
+    if not APP_BASE_URL:
+        logger.warning("WEBHOOK_SKIPPED reason=APP_BASE_URL_missing")
+        return
+    payload: dict[str, Any] = {
+        "url": f"{APP_BASE_URL}/telegram/webhook",
+        "allowed_updates": ["message", "business_message", "edited_message", "edited_business_message"],
+        "drop_pending_updates": False,
+    }
+    if TELEGRAM_WEBHOOK_SECRET:
+        payload["secret_token"] = TELEGRAM_WEBHOOK_SECRET
+    await send_telegram_request(client, "setWebhook", payload)
+    logger.info("TELEGRAM_WEBHOOK_SET url=%s/telegram/webhook", APP_BASE_URL)
+
+
+async def delete_webhook(client: httpx.AsyncClient, drop_pending_updates: bool = False) -> None:
+    await send_telegram_request(client, "deleteWebhook", {"drop_pending_updates": drop_pending_updates})
+    logger.info("TELEGRAM_WEBHOOK_DELETED drop_pending_updates=%s", drop_pending_updates)
+
+
+def _extract_message(update: dict[str, Any]) -> tuple[int, str, str] | None:
+    message = (
+        update.get("message")
+        or update.get("business_message")
+        or update.get("edited_message")
+        or update.get("edited_business_message")
+    )
+    if not message:
+        return None
+    text = message.get("text")
+    if not text:
+        return None
+    chat = message.get("chat") or {}
+    sender = message.get("from") or {}
+    chat_id = chat.get("id")
+    user_id = sender.get("id") or chat_id
+    if chat_id is None or user_id is None:
+        return None
+    return int(chat_id), str(user_id), str(text)
+
+
+def _rate_limited(user_id: str) -> bool:
+    now = time.time()
+    bucket = RATE_LIMIT_BUCKETS[user_id]
+    while bucket and now - bucket[0] > RATE_LIMIT_WINDOW_SECONDS:
+        bucket.popleft()
+    if len(bucket) >= RATE_LIMIT_COUNT:
+        return True
+    bucket.append(now)
+    return False
+
+
+async def handle_update(update: dict[str, Any], client: httpx.AsyncClient) -> None:
+    payload = _extract_message(update)
+    if payload is None:
+        logger.info("TELEGRAM_UPDATE_IGNORED update_id=%s reason=no_text", update.get("update_id"))
+        return
+
+    chat_id, user_id, text = payload
+    clean_text = sanitize_user_text(text)
+    logger.info(
+        "TELEGRAM_UPDATE_RECEIVED update_id=%s user_id=%s text=%s",
+        update.get("update_id"),
+        user_id,
+        clean_text,
     )
 
-    server = uvicorn.Server(config)
+    if _rate_limited(user_id):
+        await send_telegram_message(
+            client,
+            chat_id,
+            "You are sending messages too quickly. Please wait a moment and try again.",
+        )
+        logger.warning("RATE_LIMIT_HIT user_id=%s", user_id)
+        return
 
-    logger.info("Starting web server on port %s...", port)
-    await server.serve()
+    reply_text = await generate_employee_reply(user_id=user_id, text=clean_text)
+    await send_telegram_message(client, chat_id, reply_text)
 
 
-async def main():
+async def polling_loop(app: FastAPI) -> None:
+    client: httpx.AsyncClient = app.state.http
+    stop_event: asyncio.Event = app.state.stop_event
+    offset = None
+
+    await delete_webhook(client, drop_pending_updates=False)
+    logger.info("TELEGRAM_POLLING_STARTED")
+
+    while not stop_event.is_set():
+        try:
+            payload: dict[str, Any] = {
+                "timeout": 30,
+                "allowed_updates": ["message", "business_message", "edited_message", "edited_business_message"],
+            }
+            if offset is not None:
+                payload["offset"] = offset
+            data = await send_telegram_request(client, "getUpdates", payload)
+            for update in data.get("result", []):
+                update_id = int(update["update_id"])
+                offset = update_id + 1
+                await handle_update(update, client)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("TELEGRAM_POLLING_ERROR")
+            await asyncio.sleep(3)
+
+    logger.info("TELEGRAM_POLLING_STOPPED")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_db()
-    logger.info("Memory database initialized.")
+    app.state.http = httpx.AsyncClient(timeout=40)
+    app.state.stop_event = asyncio.Event()
+    app.state.polling_task = None
 
-    await asyncio.gather(
-        run_web_server(),
-        run_telegram_bot(),
+    logger.info("APP_STARTUP mode=%s port=%s", TELEGRAM_MODE, PORT)
+    if TELEGRAM_BOT_TOKEN:
+        if TELEGRAM_MODE == "polling":
+            app.state.polling_task = asyncio.create_task(polling_loop(app))
+        else:
+            try:
+                await ensure_webhook(app.state.http)
+            except Exception:
+                logger.exception("TELEGRAM_WEBHOOK_SETUP_FAILED")
+    else:
+        logger.warning("TELEGRAM_DISABLED reason=missing_token")
+
+    yield
+
+    app.state.stop_event.set()
+    polling_task = app.state.polling_task
+    if polling_task:
+        polling_task.cancel()
+        try:
+            await polling_task
+        except asyncio.CancelledError:
+            pass
+    await app.state.http.aclose()
+    await close_openai_client()
+    logger.info("APP_SHUTDOWN")
+
+
+app = FastAPI(title=APP_NAME, lifespan=lifespan)
+
+if ALLOWED_CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST"],
+        allow_headers=["*"],
     )
+
+
+@app.get("/")
+async def root() -> dict[str, Any]:
+    return {"service": APP_NAME, "ok": True, "mode": TELEGRAM_MODE}
+
+
+@app.get("/healthz")
+async def healthz() -> dict[str, Any]:
+    healthy = db_healthcheck()
+    if not healthy:
+        raise HTTPException(status_code=503, detail="database not healthy")
+    return {"ok": True, "database": "healthy"}
+
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(
+    request: Request,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+) -> dict[str, bool]:
+    if TELEGRAM_WEBHOOK_SECRET and x_telegram_bot_api_secret_token != TELEGRAM_WEBHOOK_SECRET:
+        logger.warning("TELEGRAM_WEBHOOK_REJECTED reason=bad_secret")
+        raise HTTPException(status_code=401, detail="invalid webhook secret")
+
+    update = await request.json()
+    await handle_update(update, request.app.state.http)
+    return {"ok": True}
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=False)

@@ -1,268 +1,146 @@
 from __future__ import annotations
 
 import logging
-import os
-from typing import Any
-
-from dotenv import load_dotenv
-from google import genai
-from google.genai import errors, types
+import re
 
 from business_settings import business_context_to_prompt
-from intent_engine import detect_intent, intent_to_prompt
-from knowledge_base import catalog_to_prompt
-from memory import get_memory, update_memory, add_context, memory_to_prompt
-from memory_extractor import extract_memory_facts, facts_to_context
-from products import search_products, format_product_for_ai
-from prompts import SYSTEM_PROMPT
+from intent_engine import detect_intent, intent_hint
+from knowledge_base import knowledge_to_prompt, search_knowledge
+from memory import (
+    memory_to_prompt,
+    read_memory,
+    save_chat_turn,
+    save_context,
+    update_memory_from_facts,
+)
+from memory_extractor import extract_memory_facts, extract_self_query_field, facts_to_context
+from openai_engine import AIProviderError, reply_with_openai
+from products import products_to_prompt, search_products
+from prompts import compose_system_prompt
 
-load_dotenv()
+logger = logging.getLogger("vyapar.engine")
 
-logger = logging.getLogger(__name__)
-
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-
-FALLBACK_MESSAGE = "🙏 Vyapar AI अहिले response generate गर्न सकेन। कृपया केही समयपछि फेरि प्रयास गर्नुहोस्।"
-QUOTA_MESSAGE = "🙏 Vyapar AI को AI quota अहिले limit मा पुगेको छ। कृपया केही समयपछि फेरि प्रयास गर्नुहोस्।"
-
-_client = None
-
-
-def get_client():
-    global _client
-
-    if _client is None:
-        api_key = os.getenv("GEMINI_API_KEY")
-
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY missing")
-
-        _client = genai.Client(api_key=api_key)
-
-    return _client
+MAX_TELEGRAM_REPLY = 3500
 
 
-def extract_response_text(response: Any) -> str:
-    try:
-        if hasattr(response, "text") and response.text:
-            return response.text.strip()
-    except Exception:
-        pass
-
-    try:
-        candidates = getattr(response, "candidates", [])
-
-        if candidates:
-            parts = getattr(candidates[0].content, "parts", [])
-            texts = []
-
-            for part in parts:
-                text = getattr(part, "text", None)
-
-                if text:
-                    texts.append(text)
-
-            if texts:
-                return "\n".join(texts).strip()
-
-    except Exception:
-        logger.exception("Response extraction failed")
-
-    return ""
+def sanitize_user_text(text: str, max_len: int = 2000) -> str:
+    cleaned = (text or "").replace("\x00", " ")
+    cleaned = re.sub(r"[\r\t]+", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned.strip()[:max_len]
 
 
-def is_quota_error(error: Exception) -> bool:
-    error_text = str(error).lower()
+def _direct_memory_answer(user_id: str, field: str | None, user_text: str) -> str | None:
+    if not field:
+        return None
+    memory = read_memory(user_id)
+    value = memory.get(field)
+    lower_text = user_text.lower()
+    nepali_hint = any(token in lower_text for token in ["mero", "ke ho", "k ho", "ma kaha", "tapai"])
 
-    quota_keywords = [
-        "429",
-        "resource_exhausted",
-        "quota",
-        "rate limit",
-        "rate_limit",
-        "free_tier_requests",
-    ]
+    if not value:
+        if nepali_hint:
+            if field == "name":
+                return "Malai tapaiko naam ahile samma save bhayeko chhaina. Ek choti tapaiko naam bhannus, ma samjhera rakhchhu."
+            if field == "city":
+                return "Malai tapaiko basne thau/city ahile samma save bhayeko chhaina."
+            if field == "company_name":
+                return "Malai tapaiko company ko naam ahile samma save bhayeko chhaina."
+        else:
+            if field == "name":
+                return "I do not have your saved name yet. Please tell me your name once and I will remember it."
+            if field == "city":
+                return "I do not have your saved city yet. Tell me where you live and I will remember it."
+            if field == "company_name":
+                return "I do not have your saved company name yet. Please tell me once and I will remember it."
+        return None
 
-    return any(keyword in error_text for keyword in quota_keywords)
+    if nepali_hint:
+        mapping = {
+            "name": f"Tapai ko naam {value} ho.",
+            "city": f"Tapai {value} ma basnuhunchha.",
+            "phone": f"Tapai ko saved phone number {value} ho.",
+            "company_name": f"Tapai ko company ko naam {value} ho.",
+            "business_type": f"Tapai ko business type {value} ho.",
+        }
+        return mapping.get(field, f"Tapai ko saved {field} {value} ho.")
 
-
-def update_basic_memory(user_id, text: str):
-    memory = get_memory(user_id)
-
-    facts = extract_memory_facts(text)
-    contexts = facts_to_context(facts)
-
-    logger.info("EXTRACTED FACTS for user_id=%s: %s", user_id, facts)
-
-    memory_fields = [
-        "name",
-        "business_type",
-        "last_topic",
-        "city",
-        "company_name",
-        "phone",
-        "package_interest",
-    ]
-
-    for field in memory_fields:
-        if facts.get(field):
-            logger.info(
-                "Saving memory for user_id=%s: %s=%s",
-                user_id,
-                field,
-                facts[field],
-            )
-            update_memory(user_id, field, facts[field])
-
-    for context in contexts:
-        logger.info(
-            "Adding memory context for user_id=%s: %s",
-            user_id,
-            context,
-        )
-        add_context(user_id, context)
-
-    updated_memory = get_memory(user_id)
-
-    logger.info("UPDATED MEMORY for user_id=%s: %s", user_id, updated_memory)
-
-    return updated_memory
+    mapping = {
+        "name": f"Your name is {value}.",
+        "city": f"You are based in {value}.",
+        "phone": f"Your saved phone number is {value}.",
+        "company_name": f"Your company name is {value}.",
+        "business_type": f"Your business type is {value}.",
+    }
+    return mapping.get(field, f"Your saved {field} is {value}.")
 
 
-def local_fast_reply(text: str) -> str | None:
-    if text in ["hello", "hi", "hey", "namaste", "namaskar", "नमस्ते"]:
-        return (
-            "नमस्ते! 🙏 म Vyapar AI हुँ। "
-            "म व्यवसाय र ग्राहक सहायता गर्न बनाइएको smart AI employee हुँ। "
-            "हजुरलाई कसरी सहयोग गर्न सक्छु?"
-        )
+def _build_user_prompt(text: str) -> str:
+    return f"""
+User message:
+{text}
 
-    if text in [
-        "thanks",
-        "thank you",
-        "thankyou",
-        "dhanyabad",
-        "dhanyawaad",
-        "धन्यवाद",
-    ]:
-        return "स्वागत छ 😊। थप सहयोग चाहियो भने भन्नुहोस्।"
-
-    if text in ["?", "??", "???"]:
-        return "कृपया आफ्नो प्रश्न अलि स्पष्ट रूपमा लेख्नुहोस् 😊"
-
-    return None
+Reply rules:
+- Keep the answer concise and useful.
+- If the user asked about their own identity or saved details, use saved memory if available.
+- If a business fact is missing, say it is not confirmed yet.
+- For Telegram, prefer short paragraphs and bullet points when helpful.
+""".strip()
 
 
-async def ai_employee_reply(
-    user_text: str,
-    user_id: str | int | None = None,
-) -> str:
-    user_text = user_text.strip()
+async def generate_employee_reply(user_id: str, text: str) -> str:
+    user_id = str(user_id)
+    clean_text = sanitize_user_text(text)
+    if not clean_text:
+        return "Please send a text message so I can help you."
 
-    if not user_text:
-        return "कृपया message पठाउनुहोस्।"
+    save_chat_turn(user_id, "user", clean_text)
 
-    text = user_text.lower().strip()
+    facts = extract_memory_facts(clean_text)
+    if facts:
+        logger.info("MEMORY_FACTS_EXTRACTED user_id=%s facts=%s", user_id, facts)
+        update_memory_from_facts(user_id, facts)
+        for context_line in facts_to_context(facts):
+            save_context(user_id, context_line)
 
-    update_basic_memory(user_id, text)
+    direct_field = extract_self_query_field(clean_text)
+    direct_answer = _direct_memory_answer(user_id, direct_field, clean_text)
+    if direct_answer:
+        logger.info("DIRECT_MEMORY_ANSWER user_id=%s field=%s", user_id, direct_field)
+        save_chat_turn(user_id, "assistant", direct_answer)
+        return direct_answer[:MAX_TELEGRAM_REPLY]
 
-    fast_reply = local_fast_reply(text)
-    if fast_reply:
-        return fast_reply
+    detected_intent = detect_intent(clean_text)
+    knowledge_items = search_knowledge(clean_text, top_n=5)
+    product_items = search_products(clean_text, top_n=3)
 
-    intent = detect_intent(user_text)
-    intent_context = intent_to_prompt(intent)
-
-    memory_context = memory_to_prompt(user_id)
-    business_context = business_context_to_prompt()
-    knowledge_context = catalog_to_prompt()
-
-    matched_products = search_products(user_text)
-    product_context = format_product_for_ai(matched_products)
-
-    prompt_with_context = f"""
-{business_context}
-
-{knowledge_context}
-
-Product Catalog Match:
-{product_context}
-
-{memory_context}
-
-{intent_context}
-
-Current User Message:
-{user_text}
-"""
-
-    logger.info(
-        "AI request from user_id=%s intent=%s text=%s",
-        user_id,
-        intent,
-        user_text,
+    system_prompt = compose_system_prompt(
+        business_block=business_context_to_prompt(),
+        memory_block=memory_to_prompt(user_id),
+        intent_block=intent_hint(detected_intent),
+        knowledge_block=knowledge_to_prompt(knowledge_items),
+        product_block=products_to_prompt(product_items),
     )
 
-    logger.info(
-        "PROMPT MEMORY CONTEXT for user_id=%s: %s",
-        user_id,
-        memory_context,
-    )
+    user_prompt = _build_user_prompt(clean_text)
 
     try:
-        client = get_client()
-
-        response = await client.aio.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt_with_context,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.45,
-                max_output_tokens=450,
-            ),
+        reply = await reply_with_openai(
+            user_id=user_id,
+            user_prompt=user_prompt,
+            instructions=system_prompt,
+        )
+    except AIProviderError:
+        logger.exception("AI_PROVIDER_TOTAL_FAILURE user_id=%s", user_id)
+        reply = (
+            "I am temporarily having trouble generating a full answer. "
+            "Please try again in a moment, or send a shorter message."
         )
 
-        reply = extract_response_text(response)
+    reply = (reply or "").strip()
+    if len(reply) > MAX_TELEGRAM_REPLY:
+        reply = reply[: MAX_TELEGRAM_REPLY - 3].rstrip() + "..."
 
-        if not reply:
-            logger.warning("Empty Gemini response for user_id=%s", user_id)
-            return FALLBACK_MESSAGE
-
-        logger.info("AI reply generated for user_id=%s length=%s", user_id, len(reply))
-
-        return reply
-
-    except errors.APIError as e:
-        logger.exception(
-            "Gemini API Error: code=%s message=%s",
-            getattr(e, "code", None),
-            getattr(e, "message", str(e)),
-        )
-
-        if is_quota_error(e):
-            return QUOTA_MESSAGE
-
-        return FALLBACK_MESSAGE
-
-    except Exception as e:
-        logger.exception("Unexpected Gemini error")
-
-        if is_quota_error(e):
-            return QUOTA_MESSAGE
-
-        return FALLBACK_MESSAGE
-
-
-def clear_memory(user_id=None):
-    return
-
-
-async def close_gemini_client():
-    global _client
-
-    try:
-        if _client:
-            await _client.aio.aclose()
-            _client.close()
-    except Exception:
-        logger.exception("Error closing Gemini client")
+    save_chat_turn(user_id, "assistant", reply)
+    return reply

@@ -1,84 +1,66 @@
-SERVICE_CATALOG = [
-    {
-        "category": "ISP Package",
-        "name": "Basic Internet Package",
-        "description": "Small family or basic home usage ko lagi suitable package.",
-        "price": None,
-        "notes": "Exact price business owner le set garne.",
-    },
-    {
-        "category": "ISP Package",
-        "name": "High Speed Internet Package",
-        "description": "Streaming, online class, office work ra multiple devices ko lagi suitable.",
-        "price": None,
-        "notes": "Exact Mbps and price business owner le set garne.",
-    },
-    {
-        "category": "Service",
-        "name": "New Internet Connection",
-        "description": "Naya customer ko lagi internet connection inquiry handle garne.",
-        "price": None,
-        "notes": "Location, package preference, phone number collect garne.",
-    },
-    {
-        "category": "Support",
-        "name": "Internet Not Working Support",
-        "description": "Customer ko internet chalena bhane first-level troubleshooting garne.",
-        "price": None,
-        "notes": "Router light, LOS light, WiFi only issue, payment status, location sodhne.",
-    },
-]
+from __future__ import annotations
 
+import re
+from typing import Any
 
-BUSINESS_FAQS = [
+KNOWLEDGE_ITEMS: list[dict[str, Any]] = [
     {
-        "question": "Internet chalena",
-        "answer": (
-            "पहिले router को power light, LOS light र WiFi signal check गर्नुपर्छ। "
-            "यदि LOS red छ भने fiber line issue हुन सक्छ। Customer ID वा phone number लिएर technician लाई escalate गर्नुपर्छ।"
-        ),
+        "title": "Platform purpose",
+        "content": "Vyapar AI Employee is designed to act like a business-facing AI employee for support, sales, reminders, and basic memory-aware conversations.",
+        "tags": ["ai", "employee", "platform", "support"],
     },
     {
-        "question": "New connection chahiyo",
-        "answer": (
-            "नयाँ connection को लागि customer को location, required speed/package, phone number र installation time preference collect गर्नुपर्छ।"
-        ),
+        "title": "Primary communication channel",
+        "content": "Telegram is the primary customer-facing channel in the current production architecture.",
+        "tags": ["telegram", "channel", "bot"],
     },
     {
-        "question": "Speed slow cha",
-        "answer": (
-            "पहिले WiFi distance, connected devices, router restart, speed test result र package speed check गर्नुपर्छ।"
-        ),
+        "title": "Deployment target",
+        "content": "Render is the primary deployment target. The application should expose a health endpoint and can receive Telegram webhook requests over HTTPS.",
+        "tags": ["render", "deploy", "health"],
+    },
+    {
+        "title": "Persistence",
+        "content": "Use SQLite for local development and small single-instance tests. Use Postgres for production durability, backups, and scale-out deployments.",
+        "tags": ["sqlite", "postgres", "database", "backup"],
+    },
+    {
+        "title": "Tone",
+        "content": "The assistant should sound professional, concise, supportive, and practical for Nepali business use. It should answer in English or Nepali depending on the user's message.",
+        "tags": ["tone", "language", "nepal", "business"],
+    },
+    {
+        "title": "Support boundaries",
+        "content": "If the bot lacks a verified business fact such as pricing, invoice status, or order state, it must say it does not have that confirmed information yet instead of inventing it.",
+        "tags": ["safety", "pricing", "hallucination"],
     },
 ]
 
 
-def catalog_to_prompt() -> str:
-    services_text = "\n".join(
-        [
-            f"- {item['name']} ({item['category']}): {item['description']} Notes: {item['notes']}"
-            for item in SERVICE_CATALOG
-        ]
-    )
+def _tokenize(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9\u0900-\u097f]+", (text or "").lower()))
 
-    faq_text = "\n".join(
-        [
-            f"- Q: {item['question']}\n  A: {item['answer']}"
-            for item in BUSINESS_FAQS
-        ]
-    )
 
-    return f"""
-Knowledge Base:
+def search_knowledge(query: str, top_n: int = 5) -> list[dict[str, Any]]:
+    query_tokens = _tokenize(query)
+    if not query_tokens:
+        return []
 
-Services / Catalog:
-{services_text}
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for item in KNOWLEDGE_ITEMS:
+        haystack = " ".join([item.get("title", ""), item.get("content", ""), " ".join(item.get("tags", []))]).lower()
+        score = sum(1 for token in query_tokens if token in haystack)
+        if score > 0:
+            scored.append((score, item))
 
-Business FAQs:
-{faq_text}
+    scored.sort(key=lambda row: row[0], reverse=True)
+    return [item for _, item in scored[:top_n]]
 
-Important:
-- Do not invent exact price if price is None.
-- Ask for location, phone number, customer ID, or package preference when needed.
-- For support issue, ask one troubleshooting question at a time.
-"""
+
+def knowledge_to_prompt(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "Knowledge snippets: None"
+    lines = ["Knowledge snippets:"]
+    for item in items:
+        lines.append(f"- {item['title']}: {item['content']}")
+    return "\n".join(lines)

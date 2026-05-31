@@ -1,130 +1,103 @@
-import sqlite3
+from __future__ import annotations
 
-DB_NAME = "memory.db"
+import os
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
+from typing import Generator
 
-
-def get_connection():
-    return sqlite3.connect(DB_NAME)
-
-
-def ensure_column(conn, table_name, column_name, column_type):
-    cursor = conn.execute(f"PRAGMA table_info({table_name})")
-    columns = [row[1] for row in cursor.fetchall()]
-
-    if column_name not in columns:
-        conn.execute(
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
-        )
+from sqlalchemy import DateTime, Integer, String, Text, create_engine, func, text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
-def init_db():
-    conn = get_connection()
+def _normalized_database_url() -> str:
+    raw = os.getenv("DATABASE_URL", "sqlite:///./data/vyapar.db").strip()
+    if raw.startswith("postgres://"):
+        raw = raw.replace("postgres://", "postgresql+psycopg://", 1)
+    elif raw.startswith("postgresql://") and "+psycopg" not in raw:
+        raw = raw.replace("postgresql://", "postgresql+psycopg://", 1)
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id TEXT PRIMARY KEY,
-            name TEXT,
-            business_type TEXT,
-            last_topic TEXT
-        )
-    """)
-
-    ensure_column(conn, "users", "city", "TEXT")
-    ensure_column(conn, "users", "company_name", "TEXT")
-    ensure_column(conn, "users", "phone", "TEXT")
-    ensure_column(conn, "users", "package_interest", "TEXT")
-
-    conn.commit()
-    conn.close()
+    if raw.startswith("sqlite:///"):
+        db_path = raw.replace("sqlite:///", "", 1)
+        if db_path and db_path != ":memory:":
+            Path(db_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+    return raw
 
 
-def get_user(user_id):
-    conn = get_connection()
+DATABASE_URL = _normalized_database_url()
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
-    cursor = conn.execute(
-        """
-        SELECT user_id, name, business_type, last_topic, city, company_name, phone, package_interest
-        FROM users
-        WHERE user_id = ?
-        """,
-        (str(user_id),),
+
+class Base(DeclarativeBase):
+    pass
+
+
+class UserMemory(Base):
+    __tablename__ = "user_memory"
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    company_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    business_type: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    package_interest: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    last_topic: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
     )
 
-    row = cursor.fetchone()
-    conn.close()
 
-    if not row:
-        return {
-            "user_id": str(user_id),
-            "name": None,
-            "business_type": None,
-            "last_topic": None,
-            "city": None,
-            "company_name": None,
-            "phone": None,
-            "package_interest": None,
-        }
+class ConversationContext(Base):
+    __tablename__ = "conversation_context"
 
-    return {
-        "user_id": row[0],
-        "name": row[1],
-        "business_type": row[2],
-        "last_topic": row[3],
-        "city": row[4],
-        "company_name": row[5],
-        "phone": row[6],
-        "package_interest": row[7],
-    }
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    context_text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
 
-def save_user_memory(
-    user_id,
-    name=None,
-    business_type=None,
-    last_topic=None,
-    city=None,
-    company_name=None,
-    phone=None,
-    package_interest=None,
-):
-    existing = get_user(user_id)
+class ChatTurn(Base):
+    __tablename__ = "chat_turn"
 
-    name = name if name is not None else existing.get("name")
-    business_type = business_type if business_type is not None else existing.get("business_type")
-    last_topic = last_topic if last_topic is not None else existing.get("last_topic")
-    city = city if city is not None else existing.get("city")
-    company_name = company_name if company_name is not None else existing.get("company_name")
-    phone = phone if phone is not None else existing.get("phone")
-    package_interest = package_interest if package_interest is not None else existing.get("package_interest")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    role: Mapped[str] = mapped_column(String(32))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
-    conn = get_connection()
 
-    conn.execute(
-        """
-        INSERT INTO users (
-            user_id, name, business_type, last_topic, city, company_name, phone, package_interest
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            name = excluded.name,
-            business_type = excluded.business_type,
-            last_topic = excluded.last_topic,
-            city = excluded.city,
-            company_name = excluded.company_name,
-            phone = excluded.phone,
-            package_interest = excluded.package_interest
-        """,
-        (
-            str(user_id),
-            name,
-            business_type,
-            last_topic,
-            city,
-            company_name,
-            phone,
-            package_interest,
-        ),
-    )
+engine = create_engine(
+    DATABASE_URL,
+    future=True,
+    pool_pre_ping=True,
+    connect_args={"check_same_thread": False} if IS_SQLITE else {},
+)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
-    conn.commit()
-    conn.close()
+
+@contextmanager
+def get_session() -> Generator:
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def init_db() -> None:
+    Base.metadata.create_all(bind=engine)
+
+
+def db_healthcheck() -> bool:
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
