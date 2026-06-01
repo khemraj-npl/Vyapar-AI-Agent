@@ -1,45 +1,47 @@
 from __future__ import annotations
 
-PRODUCTS = [
-    {
-        "name": "100 Mbps Internet Package",
-        "price": "NPR 10,000",
-        "duration": "13 months",
-        "description": "100 Mbps internet package from Himalayan Online Service Pvt. Ltd. Installation and Router/ONU are free.",
-        "tags": ["100mbps", "100 mbps", "internet", "package", "isp"],
-    },
-    {
-        "name": "150 Mbps Internet Package",
-        "price": "NPR 12,000",
-        "duration": "13 months",
-        "description": "150 Mbps internet package from Himalayan Online Service Pvt. Ltd. Installation and Router/ONU are free.",
-        "tags": ["150mbps", "150 mbps", "internet", "package", "isp"],
-    },
-    {
-        "name": "200 Mbps Internet Package",
-        "price": "NPR 15,000",
-        "duration": "13 months",
-        "description": "200 Mbps internet package from Himalayan Online Service Pvt. Ltd. Installation and Router/ONU are free.",
-        "tags": ["200mbps", "200 mbps", "internet", "package", "isp"],
-    },
-]
+import os
+from company_manager import load_company
+
+
+def get_active_company_id() -> str:
+    return os.getenv("COMPANY_ID", "hons")
+
+
+def get_company_products(company_id: str | None = None):
+    company_id = company_id or get_active_company_id()
+    company = load_company(company_id)
+
+    if not company:
+        return []
+
+    return company.get("products", [])
 
 
 def search_products(query: str, top_n: int = 3):
     query_lower = (query or "").lower()
+    products = get_company_products()
+
     results = []
 
-    for product in PRODUCTS:
+    for product in products:
+        name = str(product.get("name", ""))
+        price = str(product.get("price", ""))
+        duration = str(product.get("duration_months", ""))
+
         score = 0
 
-        for tag in product["tags"]:
-            if tag in query_lower:
+        if name.lower() in query_lower:
+            score += 5
+
+        for word in name.lower().split():
+            if word in query_lower:
                 score += 2
 
-        if product["name"].lower() in query_lower:
-            score += 3
+        if price and price in query_lower:
+            score += 1
 
-        if "price" in query_lower or "kati" in query_lower or "package" in query_lower:
+        if any(k in query_lower for k in ["price", "kati", "package", "plan", "mbps", "internet"]):
             score += 1
 
         if score > 0:
@@ -50,20 +52,45 @@ def search_products(query: str, top_n: int = 3):
 
 
 def products_to_prompt(items):
-    if not items:
-        return """
-Available internet packages:
-- 100 Mbps: NPR 10,000 for 13 months
-- 150 Mbps: NPR 12,000 for 13 months
-- 200 Mbps: NPR 15,000 for 13 months
-Installation: Free
-Router/ONU: Free
-"""
+    company_id = get_active_company_id()
+    company = load_company(company_id)
 
-    lines = ["Relevant internet packages:"]
-    for item in items:
-        lines.append(
-            f"- {item['name']}: {item['price']} for {item['duration']}. {item['description']}"
-        )
+    if not company:
+        return "Company product data is not available."
+
+    products = items or company.get("products", [])
+
+    if not products:
+        return "No product or package data is available for this company."
+
+    lines = ["Company Products / Packages:"]
+
+    for product in products:
+        name = product.get("name", "Unnamed Product")
+        price = product.get("price")
+        duration = product.get("duration_months")
+
+        line = f"- {name}"
+
+        if price is not None:
+            line += f": NPR {price}"
+
+        if duration:
+            line += f" for {duration} months"
+
+        lines.append(line)
+
+    installation = company.get("installation_charge")
+    router = company.get("router")
+    onu = company.get("onu")
+
+    if installation:
+        lines.append(f"Installation Charge: {installation}")
+
+    if router:
+        lines.append(f"Router: {router}")
+
+    if onu:
+        lines.append(f"ONU: {onu}")
 
     return "\n".join(lines)
