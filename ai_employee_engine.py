@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
-
+import os
+from company_manager import get_company_summary
 from business_settings import business_context_to_prompt
 from intent_engine import detect_intent, intent_hint
 from knowledge_base import knowledge_to_prompt, search_knowledge
@@ -115,12 +116,35 @@ async def generate_employee_reply(user_id: str, text: str) -> str:
     knowledge_items = search_knowledge(clean_text, top_n=5)
     product_items = search_products(clean_text, top_n=3)
 
-    system_prompt = compose_system_prompt(
-        business_block=business_context_to_prompt(),
-        memory_block=memory_to_prompt(user_id),
-        intent_block=intent_hint(detected_intent),
-        knowledge_block=knowledge_to_prompt(knowledge_items),
-        product_block=products_to_prompt(product_items),
+    company_id = os.getenv("COMPANY_ID", "hons")
+
+company_context = get_company_summary(company_id)
+
+business_block = f"""
+{business_context_to_prompt()}
+
+COMPANY PROFILE:
+{company_context}
+
+AI EMPLOYEE RULES:
+
+- Use COMPANY PROFILE as the primary source for company-specific information.
+- Never invent pricing, package details, contact details, or policies.
+- If information is unavailable, clearly say it is not confirmed.
+- Act like a smart employee, not just a chatbot.
+- Ask follow-up questions when needed.
+- Help identify customer needs.
+- Use memory when relevant.
+- Use general AI knowledge only when company-specific information is not required.
+""".strip()
+
+system_prompt = compose_system_prompt(
+    business_block=business_block,
+    memory_block=memory_to_prompt(user_id),
+    intent_block=intent_hint(detected_intent),
+    knowledge_block=knowledge_to_prompt(knowledge_items),
+    product_block=products_to_prompt(product_items),
+)
     )
 
     user_prompt = _build_user_prompt(clean_text)
