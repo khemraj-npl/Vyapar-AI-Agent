@@ -1,0 +1,37 @@
+{
+  "hons": {
+    "company_name": "Himalayan Online Service Pvt. Ltd.",
+    "business_type": "Internet Service Provider",
+    "location": "Kamal Pokhari, Kathmandu, Nepal",
+
+    "contact": {
+      "phone": "+977-1-4541063",
+      "toll_free": "16600149520",
+      "email": "info@hons.com.np"
+    },
+
+    "support_hours": "6:00 AM - 7:00 PM",
+
+    "products": [
+      {
+        "name": "100 Mbps",
+        "price": 10000,
+        "duration_months": 13
+      },
+      {
+        "name": "150 Mbps",
+        "price": 12000,
+        "duration_months": 13
+      },
+      {
+        "name": "200 Mbps",
+        "price": 15000,
+        "duration_months": 13
+      }
+    ],
+
+    "installation_charge": "Free",
+    "router": "Free",
+    "onu": "Free"
+  }
+}
