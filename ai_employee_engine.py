@@ -1,11 +1,10 @@
 from __future__ import annotations
-import os
-from lead_manager import detect_lead_intent, extract_lead_info, save_lead
+
 import logging
 import re
-import os
-from company_manager import get_company_summary
+
 from business_settings import business_context_to_prompt
+from company_manager import CompanyProfileError, get_active_company_id, require_company
 from intent_engine import detect_intent, intent_hint
 from knowledge_base import knowledge_to_prompt, search_knowledge
 from memory import (
@@ -24,6 +23,10 @@ logger = logging.getLogger("vyapar.engine")
 
 MAX_TELEGRAM_REPLY = 3500
 
+_UNCONFIGURED_REPLY = (
+    "This AI employee is not configured yet. Please contact support."
+)
+
 
 def sanitize_user_text(text: str, max_len: int = 2000) -> str:
     cleaned = (text or "").replace("\x00", " ")
@@ -31,6 +34,19 @@ def sanitize_user_text(text: str, max_len: int = 2000) -> str:
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
     return cleaned.strip()[:max_len]
+
+
+def _resolve_company_id(company_id: str | None = None) -> str:
+    return (company_id or get_active_company_id()).strip() or get_active_company_id()
+
+
+def _ensure_company_configured(company_id: str) -> bool:
+    try:
+        require_company(company_id)
+        return True
+    except CompanyProfileError:
+        logger.error("COMPANY_PROFILE_MISSING company_id=%s", company_id)
+        return False
 
 
 def _direct_memory_answer(user_id: str, field: str | None, user_text: str) -> str | None:
@@ -91,8 +107,9 @@ Reply rules:
 """.strip()
 
 
-async def generate_employee_reply(user_id: str, text: str) -> str:
+async def generate_employee_reply(user_id: str, text: str, company_id: str | None = None) -> str:
     user_id = str(user_id)
+    tenant_id = _resolve_company_id(company_id)
     clean_text = sanitize_user_text(text)
     if not clean_text:
         return "Please send a text message so I can help you."
@@ -101,7 +118,7 @@ async def generate_employee_reply(user_id: str, text: str) -> str:
 
     facts = extract_memory_facts(clean_text)
     if facts:
-        logger.info("MEMORY_FACTS_EXTRACTED user_id=%s facts=%s", user_id, facts)
+        logger.info("MEMORY_FACTS_EXTRACTED user_id=%s company_id=%s facts=%s", user_id, tenant_id, facts)
         update_memory_from_facts(user_id, facts)
         for context_line in facts_to_context(facts):
             save_context(user_id, context_line)
@@ -109,43 +126,24 @@ async def generate_employee_reply(user_id: str, text: str) -> str:
     direct_field = extract_self_query_field(clean_text)
     direct_answer = _direct_memory_answer(user_id, direct_field, clean_text)
     if direct_answer:
-        logger.info("DIRECT_MEMORY_ANSWER user_id=%s field=%s", user_id, direct_field)
+        logger.info("DIRECT_MEMORY_ANSWER user_id=%s company_id=%s field=%s", user_id, tenant_id, direct_field)
         save_chat_turn(user_id, "assistant", direct_answer)
         return direct_answer[:MAX_TELEGRAM_REPLY]
 
+    if not _ensure_company_configured(tenant_id):
+        save_chat_turn(user_id, "assistant", _UNCONFIGURED_REPLY)
+        return _UNCONFIGURED_REPLY
+
     detected_intent = detect_intent(clean_text)
     knowledge_items = search_knowledge(clean_text, top_n=5)
-    product_items = search_products(clean_text, top_n=3)
+    product_items = search_products(clean_text, top_n=3, company_id=tenant_id)
 
-    company_id = os.getenv("COMPANY_ID", "hons")
-
-company_context = get_company_summary(company_id)
-
-business_block = f"""
-{business_context_to_prompt()}
-
-COMPANY PROFILE:
-{company_context}
-
-AI EMPLOYEE RULES:
-
-- Use COMPANY PROFILE as the primary source for company-specific information.
-- Never invent pricing, package details, contact details, or policies.
-- If information is unavailable, clearly say it is not confirmed.
-- Act like a smart employee, not just a chatbot.
-- Ask follow-up questions when needed.
-- Help identify customer needs.
-- Use memory when relevant.
-- Use general AI knowledge only when company-specific information is not required.
-""".strip()
-
-system_prompt = compose_system_prompt(
-    business_block=business_block,
-    memory_block=memory_to_prompt(user_id),
-    intent_block=intent_hint(detected_intent),
-    knowledge_block=knowledge_to_prompt(knowledge_items),
-    product_block=products_to_prompt(product_items),
-)
+    system_prompt = compose_system_prompt(
+        business_block=business_context_to_prompt(tenant_id),
+        memory_block=memory_to_prompt(user_id),
+        intent_block=intent_hint(detected_intent),
+        knowledge_block=knowledge_to_prompt(knowledge_items),
+        product_block=products_to_prompt(product_items, company_id=tenant_id),
     )
 
     user_prompt = _build_user_prompt(clean_text)
@@ -157,7 +155,7 @@ system_prompt = compose_system_prompt(
             instructions=system_prompt,
         )
     except AIProviderError:
-        logger.exception("AI_PROVIDER_TOTAL_FAILURE user_id=%s", user_id)
+        logger.exception("AI_PROVIDER_TOTAL_FAILURE user_id=%s company_id=%s", user_id, tenant_id)
         reply = (
             "I am temporarily having trouble generating a full answer. "
             "Please try again in a moment, or send a shorter message."
@@ -168,4 +166,5 @@ system_prompt = compose_system_prompt(
         reply = reply[: MAX_TELEGRAM_REPLY - 3].rstrip() + "..."
 
     save_chat_turn(user_id, "assistant", reply)
+    logger.info("EMPLOYEE_REPLY_GENERATED user_id=%s company_id=%s", user_id, tenant_id)
     return reply

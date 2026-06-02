@@ -13,6 +13,7 @@ This build migrates the project from Gemini-first to OpenAI-first and adds:
 - Deterministic memory answers for name/city/phone/company recall
 - Better memory extraction that does not save questions like `Mero naam ke ho?` as facts
 - Knowledge base and product catalog injection
+- Tenant-aware company profile loading from `company_profiles.json` via `COMPANY_ID`
 - Rate limiting and webhook secret validation
 
 ## Render Environment Variables
@@ -24,11 +25,15 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_MODE=webhook
 APP_BASE_URL=https://your-render-service.onrender.com
 TELEGRAM_WEBHOOK_SECRET=make_a_long_random_secret
+COMPANY_ID=hons
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-5.4-mini
 OPENAI_STORE=false
 DATABASE_URL=sqlite:///./data/vyapar.db
 ```
+
+Each deployment uses one `COMPANY_ID` that must exist in `company_profiles.json`.
+Add a new tenant by adding a new key to that file and deploying with the matching `COMPANY_ID`.
 
 Recommended for real production:
 
@@ -73,6 +78,7 @@ Expected logs:
 
 ```txt
 APP_STARTUP
+COMPANY_PROFILE_LOADED
 TELEGRAM_WEBHOOK_SET
 TELEGRAM_UPDATE_RECEIVED
 MEMORY_FACTS_EXTRACTED

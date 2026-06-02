@@ -1,45 +1,234 @@
+from __future__ import annotations
+
 import json
 import os
+import re
+from pathlib import Path
+from typing import Any
+
+# Profile persistence: JSON file (Phase 1). Swap _load_all_profiles() for a DB
+# repository in Phase 2 without changing callers of get_company*().
+_PROFILES_FILENAME = "company_profiles.json"
+_PROFILES_PATH = Path(__file__).resolve().parent / _PROFILES_FILENAME
 
 
-COMPANY_FILE = "company_profiles.json"
+class CompanyProfileError(LookupError):
+    """Raised when a tenant profile is missing or the profile store is invalid."""
+
+    def __init__(self, company_id: str, reason: str = "not found") -> None:
+        self.company_id = company_id
+        super().__init__(f"Company profile '{company_id}' {reason}.")
 
 
-def load_company(company_id: str):
-    """
-    Load company profile
-    """
+def get_active_company_id() -> str:
+    return os.getenv("COMPANY_ID", "hons").strip() or "hons"
 
-    if not os.path.exists(COMPANY_FILE):
+
+def _profiles_file_path() -> Path:
+    override = os.getenv("COMPANY_PROFILES_FILE", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return _PROFILES_PATH
+
+
+def _load_all_profiles() -> dict[str, Any]:
+    path = _profiles_file_path()
+    if not path.is_file():
+        return {}
+    with path.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        raise CompanyProfileError("", "has invalid format")
+    return data
+
+
+def get_company(company_id: str) -> dict[str, Any] | None:
+    company_id = (company_id or "").strip()
+    if not company_id:
         return None
+    profile = _load_all_profiles().get(company_id)
+    if profile is None:
+        return None
+    if not isinstance(profile, dict):
+        return None
+    merged = dict(profile)
+    merged.setdefault("company_id", company_id)
+    return merged
 
-    with open(COMPANY_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
 
-    return data.get(company_id)
+def load_company(company_id: str) -> dict[str, Any] | None:
+    """Backward-compatible alias for get_company()."""
+    return get_company(company_id)
+
+
+def require_company(company_id: str) -> dict[str, Any]:
+    company = get_company(company_id)
+    if company is not None:
+        return company
+    path = _profiles_file_path()
+    if not path.is_file():
+        raise CompanyProfileError(company_id, "profiles file missing")
+    raise CompanyProfileError(company_id, "not found")
+
+
+def get_company_industry(company_id: str) -> str:
+    company = require_company(company_id)
+    return str(company.get("industry") or "general").strip() or "general"
+
+
+def get_company_contact(company_id: str) -> dict[str, str]:
+    company = require_company(company_id)
+    contact = company.get("contact") or {}
+    if not isinstance(contact, dict):
+        contact = {}
+    return {
+        "phone": str(contact.get("phone") or "").strip(),
+        "toll_free": str(contact.get("toll_free") or contact.get("tollfree") or "").strip(),
+        "email": str(contact.get("email") or "").strip(),
+    }
+
+
+def get_company_policies(company_id: str) -> dict[str, str]:
+    company = require_company(company_id)
+    policies = company.get("policies") or {}
+    if not isinstance(policies, dict):
+        policies = {}
+
+    merged: dict[str, str] = {}
+    for key, value in policies.items():
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            merged[_humanize_key(str(key))] = text
+
+    # Legacy top-level policy keys (backward compatible with older JSON shape).
+    for key in ("installation_charge", "router", "onu", "router_onu"):
+        if key in company and company[key]:
+            label = _humanize_key(key)
+            if label not in merged:
+                merged[label] = str(company[key]).strip()
+    return merged
+
+
+def get_company_rules(company_id: str) -> list[str]:
+    company = require_company(company_id)
+    rules = company.get("rules")
+    if isinstance(rules, list) and rules:
+        return [str(rule).strip() for rule in rules if str(rule).strip()]
+
+    company_name = str(company.get("company_name") or company_id)
+    derived = [
+        f"Always identify the business as {company_name} when needed.",
+        "Do not invent prices, billing status, or operational facts.",
+        "If pricing is requested, use only the product or service data provided in this prompt.",
+    ]
+    support_hours = company.get("support_hours")
+    if support_hours:
+        derived.append(f"Support is available during: {support_hours}.")
+    contact = get_company_contact(company_id)
+    if contact.get("phone") or contact.get("toll_free"):
+        derived.append("For urgent support, provide the listed phone or toll-free number.")
+    for label, value in get_company_policies(company_id).items():
+        derived.append(f"{label}: {value}.")
+    return derived
+
+
+def get_catalog_label(company_id: str) -> str:
+    company = require_company(company_id)
+    label = str(company.get("catalog_label") or "").strip()
+    return label or "products and services"
+
+
+def get_company_products(company_id: str) -> list[dict[str, Any]]:
+    company = require_company(company_id)
+    currency = str(company.get("currency") or "NPR").strip() or "NPR"
+    company_name = str(company.get("company_name") or company_id)
+    raw_products = company.get("products") or []
+    if not isinstance(raw_products, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for raw in raw_products:
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        if not name:
+            continue
+
+        duration = raw.get("duration")
+        duration_months = raw.get("duration_months")
+        if not duration and duration_months is not None:
+            duration = f"{duration_months} months"
+        duration_str = str(duration or "").strip()
+
+        description = str(raw.get("description") or "").strip()
+        if not description:
+            description = f"{name} offered by {company_name}."
+
+        tags = raw.get("tags")
+        if isinstance(tags, list) and tags:
+            tag_list = [str(tag).lower() for tag in tags if str(tag).strip()]
+        else:
+            tag_list = _default_product_tags(name)
+
+        normalized.append(
+            {
+                "name": name,
+                "price": _format_price(raw.get("price"), currency),
+                "duration": duration_str,
+                "description": description,
+                "tags": tag_list,
+                "currency": currency,
+            }
+        )
+    return normalized
 
 
 def get_company_summary(company_id: str) -> str:
-    company = load_company(company_id)
+    company = require_company(company_id)
+    contact = get_company_contact(company_id)
+    lines = [
+        f"Company ID: {company.get('company_id', company_id)}",
+        f"Company Name: {company.get('company_name')}",
+        f"Business Type: {company.get('business_type')}",
+        f"Industry: {get_company_industry(company_id)}",
+        f"Location: {company.get('location')}",
+        f"Support Hours: {company.get('support_hours')}",
+    ]
+    if contact.get("phone"):
+        lines.append(f"Phone: {contact['phone']}")
+    if contact.get("toll_free"):
+        lines.append(f"Toll Free: {contact['toll_free']}")
+    if contact.get("email"):
+        lines.append(f"Email: {contact['email']}")
 
-    if not company:
+    catalog = get_catalog_label(company_id).title()
+    lines.append(f"\n{catalog}:")
+    for product in get_company_products(company_id):
+        line = f"- {product['name']}: {product['price']}"
+        if product.get("duration"):
+            line += f" for {product['duration']}"
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _humanize_key(key: str) -> str:
+    return key.replace("_", " ").strip().title()
+
+
+def _format_price(price: Any, currency: str) -> str:
+    if price is None:
         return ""
+    if isinstance(price, str):
+        return price.strip()
+    try:
+        amount = int(price)
+        return f"{currency} {amount:,}"
+    except (TypeError, ValueError):
+        return str(price)
 
-    summary = f"""
-Company Name: {company.get("company_name")}
-Business Type: {company.get("business_type")}
-Location: {company.get("location")}
 
-Support Hours: {company.get("support_hours")}
-
-Products:
-"""
-
-    for product in company.get("products", []):
-        summary += (
-            f"\n- {product['name']} = "
-            f"NPR {product['price']} "
-            f"for {product['duration_months']} months"
-        )
-
-    return summary.strip()
+def _default_product_tags(name: str) -> list[str]:
+    tokens = re.findall(r"[a-z0-9\u0900-\u097f]+", (name or "").lower())
+    return list(dict.fromkeys(tokens))

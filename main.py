@@ -14,6 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from ai_employee_engine import generate_employee_reply, sanitize_user_text
+from company_manager import CompanyProfileError, get_active_company_id, require_company
 from memory_db import db_healthcheck, init_db
 from openai_engine import close_openai_client
 
@@ -178,7 +179,22 @@ async def lifespan(app: FastAPI):
     app.state.stop_event = asyncio.Event()
     app.state.polling_task = None
 
-    logger.info("APP_STARTUP mode=%s port=%s", TELEGRAM_MODE, PORT)
+    company_id = get_active_company_id()
+    try:
+        company = require_company(company_id)
+        logger.info(
+            "COMPANY_PROFILE_LOADED company_id=%s industry=%s name=%s",
+            company_id,
+            company.get("industry"),
+            company.get("company_name"),
+        )
+    except CompanyProfileError:
+        logger.error(
+            "COMPANY_PROFILE_MISSING company_id=%s — AI replies will return configuration error",
+            company_id,
+        )
+
+    logger.info("APP_STARTUP mode=%s port=%s company_id=%s", TELEGRAM_MODE, PORT, company_id)
     if TELEGRAM_BOT_TOKEN:
         if TELEGRAM_MODE == "polling":
             app.state.polling_task = asyncio.create_task(polling_loop(app))
@@ -219,7 +235,19 @@ if ALLOWED_CORS_ORIGINS:
 
 @app.get("/")
 async def root() -> dict[str, Any]:
-    return {"service": APP_NAME, "ok": True, "mode": TELEGRAM_MODE}
+    company_id = get_active_company_id()
+    try:
+        require_company(company_id)
+        company_loaded = True
+    except CompanyProfileError:
+        company_loaded = False
+    return {
+        "service": APP_NAME,
+        "ok": True,
+        "mode": TELEGRAM_MODE,
+        "company_id": company_id,
+        "company_loaded": company_loaded,
+    }
 
 
 @app.get("/healthz")
