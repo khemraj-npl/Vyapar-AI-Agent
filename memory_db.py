@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Generator
 
-from sqlalchemy import DateTime, Integer, String, Text, create_engine, func, text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, create_engine, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -66,6 +66,39 @@ class ChatTurn(Base):
     role: Mapped[str] = mapped_column(String(32))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+
+
+class Lead(Base):
+    __tablename__ = "leads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    company_id: Mapped[str] = mapped_column(String(64), index=True)
+    stage: Mapped[str] = mapped_column(String(32), default="new")
+    lead_score: Mapped[int] = mapped_column(Integer, default=0)
+    customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    budget: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    requested_speed: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    contact_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    contact_value: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    urgency: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    buying_intent: Mapped[bool] = mapped_column(Boolean, default=False)
+    coverage_check_needed: Mapped[bool] = mapped_column(Boolean, default=False)
+    coverage_area: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    coverage_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    matched_product: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    alternative_product: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    last_discussed_product: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    last_sales_question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_sales_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signals_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
+    )
 
 
 engine = create_engine(
