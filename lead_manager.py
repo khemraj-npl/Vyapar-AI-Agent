@@ -176,7 +176,7 @@ def sales_memory_to_prompt(lead: Lead | None) -> str:
     if lead.last_sales_reply:
         r = lead.last_sales_reply.replace("\n", " ")[:300]
         lines.append(f"- Your last sales reply: {r}")
-    lines.append("- Do not repeat the full package list. Build on this context.")
+    lines.append("- Do NOT repeat earlier package pitches. Address the customer's latest concern directly.")
     return "\n".join(lines)
 
 

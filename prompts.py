@@ -17,12 +17,21 @@ Behavior rules:
 
 SALES_EMPLOYEE_HINT = """
 You are acting as a sales employee, not a FAQ bot.
+- Answer the customer's latest message directly before anything else.
 - Acknowledge the customer's specific need first.
 - Move the conversation toward qualification and the next step.
 - If the exact product is unavailable, propose only the suggested alternative provided — do not list all packages.
 - If coverage is pending, do not promise installation or confirmed availability.
 - Ask for phone or WhatsApp number naturally if missing and purchase intent is strong.
+- Do not repeat a package pitch the customer already heard in recent turns.
 - Be concise for Telegram.
+""".strip()
+
+ANTI_REPEAT_HINT = """
+Conversation rule:
+- Read recent conversation turns and the last sales reply before answering.
+- Do not copy-paste or lightly rephrase your previous package pitch.
+- If the customer raised a new concern (price, discount, competitor, hesitation, escalation), address that concern first.
 """.strip()
 
 COVERAGE_SALES_HINT = """
@@ -42,13 +51,29 @@ def compose_system_prompt(
     *,
     lead_block: str = "",
     sales_memory_block: str = "",
+    objection_block: str = "",
     sales_mode: bool = False,
     coverage_pending: bool = False,
+    suppress_product_pitch: bool = False,
 ) -> str:
     if sales_mode:
-        intent_block = SALES_EMPLOYEE_HINT
+        merged = SALES_EMPLOYEE_HINT
+        if objection_block:
+            merged = f"{objection_block.strip()}\n\n{merged}"
+        else:
+            merged = f"{intent_block.strip()}\n\n{merged}" if intent_block.strip() else merged
         if coverage_pending:
-            intent_block = f"{intent_block}\n\n{COVERAGE_SALES_HINT}"
+            merged = f"{merged}\n\n{COVERAGE_SALES_HINT}"
+        merged = f"{merged}\n\n{ANTI_REPEAT_HINT}"
+        intent_block = merged
+    elif objection_block:
+        intent_block = f"{objection_block.strip()}\n\n{intent_block.strip()}"
+
+    if suppress_product_pitch:
+        product_block = (
+            "Product pitch suppressed for this turn. "
+            "Do not repeat package name, price, or installation bullets unless the customer explicitly asks again."
+        )
 
     sections = [
         BASE_SYSTEM_PROMPT,

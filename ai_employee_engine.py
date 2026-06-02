@@ -32,6 +32,12 @@ from products import (
     search_products,
 )
 from prompts import compose_system_prompt
+from sales_objection import (
+    detect_sales_objection,
+    objection_to_prompt,
+    sales_objection_user_rules,
+    should_suppress_product_pitch,
+)
 
 logger = logging.getLogger("vyapar.engine")
 
@@ -108,15 +114,19 @@ def _direct_memory_answer(user_id: str, field: str | None, user_text: str) -> st
     return mapping.get(field, f"Your saved {field} is {value}.")
 
 
-def _build_user_prompt(text: str, *, sales_mode: bool = False) -> str:
+def _build_user_prompt(text: str, *, sales_mode: bool = False, objection: str | None = None) -> str:
     sales_rules = ""
     if sales_mode:
         sales_rules = """
 - Act like a sales employee, not a FAQ bot.
+- Answer the customer's latest message directly.
 - Do not repeat the full package list.
 - If exact speed is unavailable, acknowledge the need and mention only the suggested alternative.
-- Ask for phone or WhatsApp if not available and intent is strong.
+- Ask for phone or WhatsApp if not available and purchase intent is strong.
 """
+    objection_rules = sales_objection_user_rules(objection)
+    if objection_rules:
+        sales_rules = f"{sales_rules}\n{objection_rules}".strip()
     return f"""
 User message:
 {text}
@@ -246,6 +256,10 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
         requested_speed=requested_speed,
     )
 
+    sales_objection = detect_sales_objection(clean_text)
+    objection_block = objection_to_prompt(sales_objection, tenant_id)
+    suppress_product_pitch = should_suppress_product_pitch(sales_objection)
+
     coverage_pending = bundle.coverage_check_needed and get_company_industry(tenant_id) == "isp"
 
     if sales_mode:
@@ -258,7 +272,18 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
             max(int((lead.lead_score if lead else 0) or 0), int(bundle.lead_score or 0)),
         )
 
-    if sales_mode and exact_product is None:
+    if sales_objection:
+        logger.info(
+            "SALES_OBJECTION_DETECTED user_id=%s company_id=%s objection=%s suppress_pitch=%s",
+            user_id,
+            tenant_id,
+            sales_objection,
+            suppress_product_pitch,
+        )
+
+    if suppress_product_pitch:
+        product_block = ""
+    elif sales_mode and exact_product is None:
         product_block = format_alternative_product(alternative_product)
     elif sales_mode:
         product_block = products_to_prompt(
@@ -282,11 +307,13 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
         product_block=product_block,
         lead_block=lead_block,
         sales_memory_block=sales_memory_block,
+        objection_block=objection_block,
         sales_mode=sales_mode,
         coverage_pending=coverage_pending,
+        suppress_product_pitch=suppress_product_pitch,
     )
 
-    user_prompt = _build_user_prompt(clean_text, sales_mode=sales_mode)
+    user_prompt = _build_user_prompt(clean_text, sales_mode=sales_mode, objection=sales_objection)
 
     try:
         reply = await reply_with_openai(
