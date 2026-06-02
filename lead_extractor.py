@@ -16,16 +16,16 @@ from memory_extractor import (
 LEAD_STAGES = ("new", "interested", "qualified", "hot")
 
 BUYING_INTENT_PATTERNS = [
-    r"internet\s+jodn[uūa]?(\s+cha|u\s+cha)?",
-    r"jodn[uūa]?\s+cha",
-    r"jodnu\s+cha",
-    r"package\s+lin[aā]?(\s+cha|u\s+cha)?",
-    r"lina\s+cha",
-    r"linu\s+cha",
+    r"internet\s+jodn[uūa]?(\s+chh?[au]|u\s+chh?[au])?",
+    r"jodn[uūa]?\s+chh?[au]",
+    r"jodnu\s+chh?[au]",
+    r"package\s+lin[aā]?(\s+chh?[au]|u\s+chh?[au])?",
+    r"lina\s+chh?[au]",
+    r"linu\s+chh?[au]",
     r"net\s+chahiy[oō]",
     r"internet\s+chahiy[oō]",
     r"connection\s+chahiy[oō]",
-    r"install\s+garn[aā]?\s+cha",
+    r"install\s+garn[aā]?\s+(?:chh?[au]|parcha)",
     r"installation\s+chahiy[oō]",
     r"new\s+connection",
     r"\bsubscribe\b",
@@ -35,16 +35,18 @@ BUYING_INTENT_PATTERNS = [
 
 CONTACT_METHOD_PATTERNS: dict[str, list[str]] = {
     "whatsapp": [r"whatsapp", r"\bwa\s+ma\b", r"व्हाट्सएप"],
-    "phone": [r"\bphone\b", r"\bcall\b", r"\bmobile\b", r"number\s+dinchu", r"सम्पर्क", r"फोन"],
+    "phone": [r"\bphone\b", r"\bcall\b", r"\bmobile\b", r"number\s+dinchh?u", r"सम्पर्क", r"फोन"],
     "telegram": [r"\btelegram\b", r"telegram\s+mai", r"यहीँ"],
 }
 
 COVERAGE_PATTERNS = [
     r"area\s+ma\s+auncha",
-    r"available\s+chha",
+    r"available\s+chh?[au]",
     r"coverage",
     r"hamro\s+area",
     r"service\s+auncha",
+    r"ko\s+net\s+chh?[au]",
+    r"net\s+chh?[au]\??",
     r"pugchha",
     r"pughcha",
 ]
@@ -154,6 +156,8 @@ def extract_urgency(text: str) -> str | None:
 def detect_coverage_check_needed(text: str, buying_intent: bool, location: str | None) -> bool:
     normalized = normalize_text(text).lower()
     if any(re.search(pattern, normalized) for pattern in COVERAGE_PATTERNS):
+        return True
+    if location and re.search(r"\bma\b", normalized) and "?" in normalized:
         return True
     return bool(buying_intent and location)
 

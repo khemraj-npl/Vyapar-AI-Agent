@@ -133,18 +133,37 @@ Reply rules:
 def _resolve_sales_mode(
     *,
     bundle,
+    lead,
     detected_intent: str,
     exact_product: dict | None,
     requested_speed: int | None,
-) -> bool:
+) -> tuple[bool, str]:
     if bundle.buying_intent:
-        return True
+        return True, "buying_intent"
+
+    lead_stage = (lead.stage if lead else None) or bundle.stage
+    lead_score = max(int((lead.lead_score if lead else 0) or 0), int(bundle.lead_score or 0))
+
+    if lead_stage in ("interested", "qualified", "hot"):
+        return True, f"lead_stage={lead_stage}"
+    if lead_score >= 40:
+        return True, f"lead_score={lead_score}"
+    if bundle.coverage_check_needed:
+        return True, "coverage_check_needed"
+
     if detected_intent in ("buying_intent", "sales", "pricing", "coverage_inquiry"):
         if exact_product is None and (requested_speed is not None or bundle.fields.get("requested_speed")):
-            return True
+            return True, "no_exact_product_match"
         if bundle.coverage_check_needed:
-            return True
-    return False
+            return True, "coverage_inquiry"
+
+    if should_process_lead(bundle):
+        if exact_product is None and (requested_speed is not None or bundle.signals.get("has_speed")):
+            return True, "unavailable_speed"
+        if bundle.signals.get("has_urgency"):
+            return True, "urgency_signal"
+
+    return False, "none"
 
 
 async def generate_employee_reply(user_id: str, text: str, company_id: str | None = None) -> str:
@@ -219,8 +238,9 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
             lead.lead_score,
         )
 
-    sales_mode = _resolve_sales_mode(
+    sales_mode, sales_mode_reason = _resolve_sales_mode(
         bundle=bundle,
+        lead=lead,
         detected_intent=detected_intent,
         exact_product=exact_product,
         requested_speed=requested_speed,
@@ -228,9 +248,18 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
 
     coverage_pending = bundle.coverage_check_needed and get_company_industry(tenant_id) == "isp"
 
+    if sales_mode:
+        logger.info(
+            "SALES_MODE_ACTIVE user_id=%s company_id=%s reason=%s stage=%s score=%s",
+            user_id,
+            tenant_id,
+            sales_mode_reason,
+            lead.stage if lead else bundle.stage,
+            max(int((lead.lead_score if lead else 0) or 0), int(bundle.lead_score or 0)),
+        )
+
     if sales_mode and exact_product is None:
         product_block = format_alternative_product(alternative_product)
-        logger.info("SALES_MODE_ACTIVE user_id=%s reason=no_exact_match", user_id)
     elif sales_mode:
         product_block = products_to_prompt(
             [exact_product] if exact_product else search_products(clean_text, top_n=1, company_id=tenant_id),

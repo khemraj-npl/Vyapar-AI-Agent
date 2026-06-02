@@ -32,9 +32,9 @@ def detect_intent(text: str) -> str:
 def _is_buying_intent(text: str) -> bool:
     patterns = [
         r"internet\s+jodn",
-        r"jodn[uūa]?\s+cha",
+        r"jodn[uūa]?\s+chh?[au]",
         r"package\s+lin",
-        r"lina\s+cha",
+        r"lina\s+chh?[au]",
         r"net\s+chahiy",
         r"internet\s+chahiy",
         r"connection\s+chahiy",
@@ -44,7 +44,15 @@ def _is_buying_intent(text: str) -> bool:
 
 
 def _is_coverage_inquiry(text: str) -> bool:
-    patterns = [r"area\s+ma\s+auncha", r"available\s+chha", r"coverage", r"hamro\s+area", r"service\s+auncha"]
+    patterns = [
+        r"area\s+ma\s+auncha",
+        r"available\s+chh?[au]",
+        r"coverage",
+        r"hamro\s+area",
+        r"service\s+auncha",
+        r"ko\s+net\s+chh?[au]",
+        r"net\s+chh?[au]\??",
+    ]
     return any(re.search(pattern, text) for pattern in patterns)
 
 
