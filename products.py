@@ -1,96 +1,66 @@
 from __future__ import annotations
 
-import os
-from company_manager import load_company
+from typing import Any
+
+from company_manager import (
+    get_active_company_id,
+    get_catalog_label,
+    get_company_policies,
+    get_company_products,
+)
 
 
-def get_active_company_id() -> str:
-    return os.getenv("COMPANY_ID", "hons")
-
-
-def get_company_products(company_id: str | None = None):
-    company_id = company_id or get_active_company_id()
-    company = load_company(company_id)
-
-    if not company:
-        return []
-
-    return company.get("products", [])
-
-
-def search_products(query: str, top_n: int = 3):
+def search_products(query: str, top_n: int = 3, company_id: str | None = None) -> list[dict[str, Any]]:
+    tenant_id = company_id or get_active_company_id()
     query_lower = (query or "").lower()
-    products = get_company_products()
+    results: list[tuple[int, dict[str, Any]]] = []
 
-    results = []
-
-    for product in products:
-        name = str(product.get("name", ""))
-        price = str(product.get("price", ""))
-        duration = str(product.get("duration_months", ""))
-
+    for product in get_company_products(tenant_id):
         score = 0
-
-        if name.lower() in query_lower:
-            score += 5
-
-        for word in name.lower().split():
-            if word in query_lower:
+        for tag in product.get("tags", []):
+            if tag in query_lower:
                 score += 2
-
-        if price and price in query_lower:
+        if product["name"].lower() in query_lower:
+            score += 3
+        if any(token in query_lower for token in ("price", "kati", "cost", "rate", "package", "service", "plan")):
             score += 1
-
-        if any(k in query_lower for k in ["price", "kati", "package", "plan", "mbps", "internet"]):
-            score += 1
-
         if score > 0:
             results.append((score, product))
 
-    results.sort(key=lambda x: x[0], reverse=True)
+    results.sort(key=lambda row: row[0], reverse=True)
     return [item for _, item in results[:top_n]]
 
 
-def products_to_prompt(items):
-    company_id = get_active_company_id()
-    company = load_company(company_id)
+def products_to_prompt(items: list[dict[str, Any]], company_id: str | None = None) -> str:
+    tenant_id = company_id or get_active_company_id()
+    catalog = get_catalog_label(tenant_id)
 
-    if not company:
-        return "Company product data is not available."
+    if not items:
+        all_products = get_company_products(tenant_id)
+        if not all_products:
+            return f"Available {catalog}: None confirmed in the company profile."
 
-    products = items or company.get("products", [])
+        lines = [f"Available {catalog}:"]
+        for product in all_products:
+            line = f"- {product['name']}: {product['price']}"
+            if product.get("duration"):
+                line += f" for {product['duration']}"
+            lines.append(line)
 
-    if not products:
-        return "No product or package data is available for this company."
+        policies = get_company_policies(tenant_id)
+        if policies:
+            lines.append("")
+            lines.append("Business policies:")
+            for label, value in policies.items():
+                lines.append(f"- {label}: {value}")
+        return "\n".join(lines)
 
-    lines = ["Company Products / Packages:"]
-
-    for product in products:
-        name = product.get("name", "Unnamed Product")
-        price = product.get("price")
-        duration = product.get("duration_months")
-
-        line = f"- {name}"
-
-        if price is not None:
-            line += f": NPR {price}"
-
-        if duration:
-            line += f" for {duration} months"
-
+    lines = [f"Relevant {catalog}:"]
+    for item in items:
+        line = f"- {item['name']}: {item['price']}"
+        if item.get("duration"):
+            line += f" for {item['duration']}"
+        if item.get("description"):
+            line += f". {item['description']}"
         lines.append(line)
-
-    installation = company.get("installation_charge")
-    router = company.get("router")
-    onu = company.get("onu")
-
-    if installation:
-        lines.append(f"Installation Charge: {installation}")
-
-    if router:
-        lines.append(f"Router: {router}")
-
-    if onu:
-        lines.append(f"ONU: {onu}")
-
     return "\n".join(lines)
