@@ -1,37 +1,31 @@
 {
-  "hons": {
-    "company_name": "Himalayan Online Service Pvt. Ltd.",
-    "business_type": "Internet Service Provider",
-    "location": "Kamal Pokhari, Kathmandu, Nepal",
-
-    "contact": {
-      "phone": "+977-1-4541063",
-      "toll_free": "16600149520",
-      "email": "info@hons.com.np"
+  "company_name": "Himalayan Online Service Pvt. Ltd.",
+  "business_type": "Internet Service Provider",
+  "location": "Head Kamal Pokhari, Kathmandu, Nepal",
+  "phone": "+977-1-4541063",
+  "toll_free": "16600149520",
+  "email": "info@hons.com.np",
+  "support_hours": "6:00 AM to 7:00 PM",
+  "installation_charge": "Free",
+  "router_onu": "Free Router / ONU",
+  "packages": [
+    {
+      "name": "100 Mbps Internet Package",
+      "speed": "100 Mbps",
+      "price": "NPR 10,000",
+      "duration": "13 months"
     },
-
-    "support_hours": "6:00 AM - 7:00 PM",
-
-    "products": [
-      {
-        "name": "100 Mbps",
-        "price": 10000,
-        "duration_months": 13
-      },
-      {
-        "name": "150 Mbps",
-        "price": 12000,
-        "duration_months": 13
-      },
-      {
-        "name": "200 Mbps",
-        "price": 15000,
-        "duration_months": 13
-      }
-    ],
-
-    "installation_charge": "Free",
-    "router": "Free",
-    "onu": "Free"
-  }
+    {
+      "name": "150 Mbps Internet Package",
+      "speed": "150 Mbps",
+      "price": "NPR 12,000",
+      "duration": "13 months"
+    },
+    {
+      "name": "200 Mbps Internet Package",
+      "speed": "200 Mbps",
+      "price": "NPR 15,000",
+      "duration": "13 months"
+    }
+  ]
 }
