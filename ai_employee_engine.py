@@ -8,6 +8,7 @@ from business_settings import business_context_to_prompt
 from company_manager import CompanyProfileError, get_active_company_id, get_company_industry, require_company
 from intent_engine import detect_intent, intent_hint
 from knowledge_base import knowledge_to_prompt, search_knowledge
+from language_lock import detect_language, language_lock_prompt, resolve_session_language
 from lead_extractor import extract_lead_bundle, should_process_lead
 from lead_manager import (
     get_active_lead,
@@ -24,6 +25,7 @@ from memory import (
     update_memory_from_facts,
 )
 from memory_extractor import extract_memory_facts, extract_self_query_field, facts_to_context
+from memory_validator import validate_memory_facts
 from openai_engine import AIProviderError, reply_with_openai
 from products import (
     find_best_product_match,
@@ -32,12 +34,23 @@ from products import (
     search_products,
 )
 from prompts import compose_system_prompt
+from response_validator import build_fallback_reply, validate_response
 from sales_objection import (
     detect_sales_objection,
     objection_to_prompt,
     sales_objection_user_rules,
     should_suppress_product_pitch,
 )
+from session_state_manager import (
+    get_session_state,
+    increment_pitch_count,
+    mark_escalation_requested,
+    record_assistant_reply,
+    save_session_state,
+    session_state_to_prompt,
+    sync_session_state,
+)
+from turn_router import route_turn
 
 logger = logging.getLogger("vyapar.engine")
 
@@ -69,16 +82,15 @@ def _ensure_company_configured(company_id: str) -> bool:
         return False
 
 
-def _direct_memory_answer(user_id: str, field: str | None, user_text: str) -> str | None:
+def _direct_memory_answer(user_id: str, field: str | None, user_text: str, language: str = "english") -> str | None:
     if not field:
         return None
     memory = read_memory(user_id)
     value = memory.get(field)
-    lower_text = user_text.lower()
-    nepali_hint = any(token in lower_text for token in ["mero", "ke ho", "k ho", "ma kaha", "tapai"])
+    nepali = language == "nepali"
 
     if not value:
-        if nepali_hint:
+        if nepali:
             if field == "name":
                 return "Malai tapaiko naam ahile samma save bhayeko chhaina. Ek choti tapaiko naam bhannus, ma samjhera rakhchhu."
             if field == "city":
@@ -94,7 +106,7 @@ def _direct_memory_answer(user_id: str, field: str | None, user_text: str) -> st
                 return "I do not have your saved company name yet. Please tell me once and I will remember it."
         return None
 
-    if nepali_hint:
+    if nepali:
         mapping = {
             "name": f"Tapai ko naam {value} ho.",
             "city": f"Tapai {value} ma basnuhunchha.",
@@ -114,7 +126,14 @@ def _direct_memory_answer(user_id: str, field: str | None, user_text: str) -> st
     return mapping.get(field, f"Your saved {field} is {value}.")
 
 
-def _build_user_prompt(text: str, *, sales_mode: bool = False, objection: str | None = None) -> str:
+def _build_user_prompt(
+    text: str,
+    *,
+    sales_mode: bool = False,
+    objection: str | None = None,
+    phone_collected: bool = False,
+    suppress_phone_ask: bool = False,
+) -> str:
     sales_rules = ""
     if sales_mode:
         sales_rules = """
@@ -122,11 +141,19 @@ def _build_user_prompt(text: str, *, sales_mode: bool = False, objection: str | 
 - Answer the customer's latest message directly.
 - Do not repeat the full package list.
 - If exact speed is unavailable, acknowledge the need and mention only the suggested alternative.
-- Ask for phone or WhatsApp if not available and purchase intent is strong.
 """
+        if not phone_collected and not suppress_phone_ask:
+            sales_rules += "- Ask for phone or WhatsApp if not available and purchase intent is strong.\n"
+        elif phone_collected:
+            sales_rules += "- Phone is already collected. Do NOT ask for phone or WhatsApp again.\n"
+
     objection_rules = sales_objection_user_rules(objection)
     if objection_rules:
         sales_rules = f"{sales_rules}\n{objection_rules}".strip()
+
+    if suppress_phone_ask and not phone_collected:
+        sales_rules += "\n- Do NOT ask for phone or WhatsApp in this reply.\n"
+
     return f"""
 User message:
 {text}
@@ -140,6 +167,21 @@ Reply rules:
 """.strip()
 
 
+def _turn_router_prompt(turn_type: str) -> str:
+    hints = {
+        "greeting": "Turn: greeting. Welcome briefly. Do not pitch packages.",
+        "company_info": "Turn: company_info. Answer only what was asked about the company. No package pitch.",
+        "support": "Turn: support. Help with the issue. No package pitch unless user asks pricing.",
+        "sales": "Turn: sales. Qualify need and propose next step without repeating prior pitch.",
+        "objection": "Turn: objection. Address the objection first. No repeated package template.",
+        "escalation": "Turn: escalation. Share official company contact. Say 'hamro team', not 'tapainko team'.",
+        "correction": "Turn: correction. Acknowledge the mistake and answer correctly.",
+        "memory_query": "Turn: memory_query. Use saved memory only. Do not guess.",
+        "general_knowledge": "Turn: general. Answer the question directly without sales pitch.",
+    }
+    return hints.get(turn_type, hints["general_knowledge"])
+
+
 def _resolve_sales_mode(
     *,
     bundle,
@@ -147,7 +189,14 @@ def _resolve_sales_mode(
     detected_intent: str,
     exact_product: dict | None,
     requested_speed: int | None,
+    turn_route,
 ) -> tuple[bool, str]:
+    if turn_route.turn_type in ("greeting", "company_info", "memory_query", "support", "correction", "general_knowledge"):
+        if turn_route.turn_type == "general_knowledge" and detected_intent not in ("buying_intent", "sales", "pricing"):
+            return False, f"turn={turn_route.turn_type}"
+    if turn_route.force_sales_mode:
+        return True, f"turn={turn_route.turn_type}"
+
     if bundle.buying_intent:
         return True, "buying_intent"
 
@@ -176,6 +225,55 @@ def _resolve_sales_mode(
     return False, "none"
 
 
+def _finalize_reply(
+    user_id: str,
+    tenant_id: str,
+    reply: str,
+    *,
+    session,
+    turn_route,
+    sales_mode: bool,
+    product_block: str,
+) -> str:
+    validation = validate_response(
+        reply,
+        last_reply=session.last_assistant_reply,
+        phone_collected=session.phone_collected,
+        suppress_catalog=turn_route.suppress_catalog,
+        known_phone=session.phone,
+    )
+
+    final_reply = validation.sanitized_reply or reply
+    if not validation.is_valid:
+        company = require_company(tenant_id)
+        company_name = str(company.get("company_name") or tenant_id)
+        final_reply = build_fallback_reply(
+            turn_route.turn_type,
+            language=session.language,
+            company_name=company_name,
+        )
+        logger.info(
+            "RESPONSE_VALIDATOR_FALLBACK user_id=%s company_id=%s turn=%s issues=%s",
+            user_id,
+            tenant_id,
+            turn_route.turn_type,
+            validation.issues,
+        )
+    elif validation.issues:
+        logger.info(
+            "RESPONSE_VALIDATOR_SANITIZED user_id=%s company_id=%s issues=%s",
+            user_id,
+            tenant_id,
+            validation.issues,
+        )
+
+    if sales_mode and product_block and not turn_route.suppress_catalog:
+        increment_pitch_count(user_id, tenant_id)
+
+    record_assistant_reply(user_id, tenant_id, final_reply)
+    return final_reply[:MAX_TELEGRAM_REPLY]
+
+
 async def generate_employee_reply(user_id: str, text: str, company_id: str | None = None) -> str:
     user_id = str(user_id)
     tenant_id = _resolve_company_id(company_id)
@@ -185,8 +283,16 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
 
     save_chat_turn(user_id, "user", clean_text)
 
+    detected_lang = detect_language(clean_text)
+    session = get_session_state(user_id, tenant_id)
+    session.language = resolve_session_language(session.language, detected_lang)
+
     memory = read_memory(user_id)
-    facts = extract_memory_facts(clean_text)
+    raw_facts = extract_memory_facts(clean_text)
+    facts = validate_memory_facts(clean_text, raw_facts)
+    if raw_facts and facts != raw_facts:
+        rejected = {k: v for k, v in raw_facts.items() if k not in facts}
+        logger.info("MEMORY_FACTS_REJECTED user_id=%s company_id=%s rejected=%s", user_id, tenant_id, rejected)
     if facts:
         logger.info("MEMORY_FACTS_EXTRACTED user_id=%s company_id=%s facts=%s", user_id, tenant_id, facts)
         update_memory_from_facts(user_id, facts)
@@ -194,18 +300,75 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
             save_context(user_id, context_line)
         memory = read_memory(user_id)
 
-    direct_field = extract_self_query_field(clean_text)
-    direct_answer = _direct_memory_answer(user_id, direct_field, clean_text)
-    if direct_answer:
-        logger.info("DIRECT_MEMORY_ANSWER user_id=%s company_id=%s field=%s", user_id, tenant_id, direct_field)
-        save_chat_turn(user_id, "assistant", direct_answer)
-        return direct_answer[:MAX_TELEGRAM_REPLY]
-
     if not _ensure_company_configured(tenant_id):
         save_chat_turn(user_id, "assistant", _UNCONFIGURED_REPLY)
         return _UNCONFIGURED_REPLY
 
     lead = get_active_lead(user_id, tenant_id)
+    session = sync_session_state(
+        user_id,
+        tenant_id,
+        memory=memory,
+        lead=lead,
+        facts=facts,
+        language=session.language,
+    )
+    session.turn_count += 1
+    save_session_state(session)
+
+    detected_intent = detect_intent(clean_text)
+    sales_objection = detect_sales_objection(clean_text)
+    turn_route = route_turn(
+        clean_text,
+        session=session,
+        detected_intent=detected_intent,
+        sales_objection=sales_objection,
+        company_id=tenant_id,
+        language=session.language,
+    )
+
+    logger.info(
+        "TURN_ROUTED user_id=%s company_id=%s turn=%s reason=%s suppress_catalog=%s",
+        user_id,
+        tenant_id,
+        turn_route.turn_type,
+        turn_route.reason,
+        turn_route.suppress_catalog,
+    )
+
+    if turn_route.direct_answer:
+        reply = _finalize_reply(
+            user_id,
+            tenant_id,
+            turn_route.direct_answer,
+            session=session,
+            turn_route=turn_route,
+            sales_mode=False,
+            product_block="",
+        )
+        save_chat_turn(user_id, "assistant", reply)
+        if turn_route.turn_type == "escalation":
+            mark_escalation_requested(user_id, tenant_id)
+        logger.info("DIRECT_TURN_ANSWER user_id=%s company_id=%s turn=%s", user_id, tenant_id, turn_route.turn_type)
+        return reply
+
+    if turn_route.turn_type == "memory_query":
+        direct_field = extract_self_query_field(clean_text)
+        direct_answer = _direct_memory_answer(user_id, direct_field, clean_text, language=session.language)
+        if direct_answer:
+            reply = _finalize_reply(
+                user_id,
+                tenant_id,
+                direct_answer,
+                session=session,
+                turn_route=turn_route,
+                sales_mode=False,
+                product_block="",
+            )
+            save_chat_turn(user_id, "assistant", reply)
+            logger.info("DIRECT_MEMORY_ANSWER user_id=%s company_id=%s field=%s", user_id, tenant_id, direct_field)
+            return reply
+
     bundle = extract_lead_bundle(clean_text, memory, channel="telegram", user_id=user_id)
 
     if should_process_lead(bundle):
@@ -220,7 +383,6 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
         )
 
     exact_product, alternative_product, requested_speed = find_best_product_match(clean_text, company_id=tenant_id)
-    detected_intent = detect_intent(clean_text)
 
     if should_process_lead(bundle):
         lead = upsert_lead(
@@ -239,6 +401,7 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
             matched_product=exact_product["name"] if exact_product else None,
             alternative_product=alternative_product["name"] if alternative_product else None,
         )
+        session = sync_session_state(user_id, tenant_id, memory=memory, lead=lead, language=session.language)
         logger.info(
             "LEAD_UPSERTED user_id=%s company_id=%s lead_id=%s stage=%s score=%s",
             user_id,
@@ -254,12 +417,11 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
         detected_intent=detected_intent,
         exact_product=exact_product,
         requested_speed=requested_speed,
+        turn_route=turn_route,
     )
 
-    sales_objection = detect_sales_objection(clean_text)
+    suppress_product_pitch = should_suppress_product_pitch(sales_objection) or turn_route.suppress_catalog
     objection_block = objection_to_prompt(sales_objection, tenant_id)
-    suppress_product_pitch = should_suppress_product_pitch(sales_objection)
-
     coverage_pending = bundle.coverage_check_needed and get_company_industry(tenant_id) == "isp"
 
     if sales_mode:
@@ -281,19 +443,19 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
             suppress_product_pitch,
         )
 
-    if suppress_product_pitch:
-        product_block = ""
-    elif sales_mode and exact_product is None:
-        product_block = format_alternative_product(alternative_product)
-    elif sales_mode:
-        product_block = products_to_prompt(
-            [exact_product] if exact_product else search_products(clean_text, top_n=1, company_id=tenant_id),
-            company_id=tenant_id,
-            include_full_catalog=False,
-        )
-    else:
-        product_items = search_products(clean_text, top_n=3, company_id=tenant_id)
-        product_block = products_to_prompt(product_items, company_id=tenant_id, include_full_catalog=True)
+    product_block = ""
+    if not suppress_product_pitch:
+        if sales_mode and exact_product is None:
+            product_block = format_alternative_product(alternative_product)
+        elif sales_mode:
+            product_block = products_to_prompt(
+                [exact_product] if exact_product else search_products(clean_text, top_n=1, company_id=tenant_id),
+                company_id=tenant_id,
+                include_full_catalog=False,
+            )
+        elif not turn_route.suppress_catalog:
+            product_items = search_products(clean_text, top_n=3, company_id=tenant_id)
+            product_block = products_to_prompt(product_items, company_id=tenant_id, include_full_catalog=True)
 
     knowledge_items = search_knowledge(clean_text, top_n=5)
     lead_block = lead_to_prompt(lead)
@@ -308,12 +470,21 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
         lead_block=lead_block,
         sales_memory_block=sales_memory_block,
         objection_block=objection_block,
+        session_state_block=session_state_to_prompt(session),
+        language_lock_block=language_lock_prompt(session.language),
+        turn_router_block=_turn_router_prompt(turn_route.turn_type),
         sales_mode=sales_mode,
         coverage_pending=coverage_pending,
         suppress_product_pitch=suppress_product_pitch,
     )
 
-    user_prompt = _build_user_prompt(clean_text, sales_mode=sales_mode, objection=sales_objection)
+    user_prompt = _build_user_prompt(
+        clean_text,
+        sales_mode=sales_mode,
+        objection=sales_objection,
+        phone_collected=session.phone_collected,
+        suppress_phone_ask=turn_route.suppress_phone_ask,
+    )
 
     try:
         reply = await reply_with_openai(
@@ -328,9 +499,15 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
             "Please try again in a moment, or send a shorter message."
         )
 
-    reply = (reply or "").strip()
-    if len(reply) > MAX_TELEGRAM_REPLY:
-        reply = reply[: MAX_TELEGRAM_REPLY - 3].rstrip() + "..."
+    reply = _finalize_reply(
+        user_id,
+        tenant_id,
+        (reply or "").strip(),
+        session=session,
+        turn_route=turn_route,
+        sales_mode=sales_mode,
+        product_block=product_block,
+    )
 
     save_chat_turn(user_id, "assistant", reply)
 
@@ -346,5 +523,11 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
     if lead:
         maybe_notify_admin(lead=lead, company_id=tenant_id)
 
-    logger.info("EMPLOYEE_REPLY_GENERATED user_id=%s company_id=%s sales_mode=%s", user_id, tenant_id, sales_mode)
+    logger.info(
+        "EMPLOYEE_REPLY_GENERATED user_id=%s company_id=%s sales_mode=%s turn=%s",
+        user_id,
+        tenant_id,
+        sales_mode,
+        turn_route.turn_type,
+    )
     return reply

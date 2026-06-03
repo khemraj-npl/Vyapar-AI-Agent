@@ -68,6 +68,28 @@ class ChatTurn(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
 
+class ConversationState(Base):
+    __tablename__ = "conversation_state"
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    company_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    language: Mapped[str | None] = mapped_column(String(16), nullable=True, default="english")
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    package_interest: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    lead_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pitch_count: Mapped[int] = mapped_column(Integer, default=0)
+    phone_collected: Mapped[bool] = mapped_column(Boolean, default=False)
+    escalation_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_assistant_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    turn_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Lead(Base):
     __tablename__ = "leads"
 

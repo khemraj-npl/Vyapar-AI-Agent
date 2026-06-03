@@ -52,6 +52,9 @@ def compose_system_prompt(
     lead_block: str = "",
     sales_memory_block: str = "",
     objection_block: str = "",
+    session_state_block: str = "",
+    language_lock_block: str = "",
+    turn_router_block: str = "",
     sales_mode: bool = False,
     coverage_pending: bool = False,
     suppress_product_pitch: bool = False,
@@ -77,8 +80,11 @@ def compose_system_prompt(
 
     sections = [
         BASE_SYSTEM_PROMPT,
+        language_lock_block.strip(),
         business_block.strip(),
         f"Intent handling hint:\n{intent_block.strip()}",
+        turn_router_block.strip(),
+        session_state_block.strip(),
         memory_block.strip(),
         lead_block.strip(),
         sales_memory_block.strip(),

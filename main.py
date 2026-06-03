@@ -35,6 +35,8 @@ logging.basicConfig(
 logger = logging.getLogger("vyapar.main")
 
 RATE_LIMIT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
+PROCESSED_UPDATE_IDS: set[int] = set()
+PROCESSED_UPDATE_ORDER: deque[int] = deque(maxlen=500)
 
 
 def _telegram_api_url(method: str) -> str:
@@ -114,7 +116,26 @@ def _rate_limited(user_id: str) -> bool:
     return False
 
 
+def _already_processed_update(update_id: int | None) -> bool:
+    if update_id is None:
+        return False
+    uid = int(update_id)
+    if uid in PROCESSED_UPDATE_IDS:
+        return True
+    if len(PROCESSED_UPDATE_ORDER) >= PROCESSED_UPDATE_ORDER.maxlen:
+        oldest = PROCESSED_UPDATE_ORDER.popleft()
+        PROCESSED_UPDATE_IDS.discard(oldest)
+    PROCESSED_UPDATE_ORDER.append(uid)
+    PROCESSED_UPDATE_IDS.add(uid)
+    return False
+
+
 async def handle_update(update: dict[str, Any], client: httpx.AsyncClient) -> None:
+    update_id = update.get("update_id")
+    if _already_processed_update(update_id):
+        logger.info("TELEGRAM_UPDATE_DEDUPED update_id=%s", update_id)
+        return
+
     payload = _extract_message(update)
     if payload is None:
         logger.info("TELEGRAM_UPDATE_IGNORED update_id=%s reason=no_text", update.get("update_id"))
