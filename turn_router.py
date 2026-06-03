@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from company_manager import get_company_contact, require_company
-from memory_extractor import extract_self_query_field
+from memory_extractor import extract_self_query_field, normalize_text
 from sales_objection import detect_sales_objection
 
 COMPANY_INFO_PATTERNS = [
@@ -24,6 +24,9 @@ COMPANY_INFO_PATTERNS = [
     r"\bisp\s+ko\s+naam\b",
     r"^ko\s+net\s+ho\b",
     r"^kun\s+net\s+ho\b",
+    r"\btimro\s+office\b",
+    r"\btapaiko\s+office\b",
+    r"\boffice\s+kaha\b",
 ]
 
 AI_IDENTITY_PATTERNS = [
@@ -34,8 +37,50 @@ AI_IDENTITY_PATTERNS = [
     r"\byour\s+name\b",
     r"\bwho\s+are\s+you\b",
     r"\btapai\s+ko\s+ho\b",
-    r"\btapai\s+ko\s+identity\b",
-    r"\btapainko\s+identity\b",
+]
+
+GENERAL_KNOWLEDGE_PATTERNS = [
+    r"internet\s+ko\s+user\s+kati",
+    r"user\s+kati\s+chha",
+    r"kati\s+padhnu\s+bha",
+    r"padhnu\s+bhayeko",
+    r"maithili\s+bhasa",
+    r"maithili\s+auchha",
+    r"nepal\s+ma\s+internet",
+]
+
+UNKNOWN_PRODUCT_PATTERNS = [
+    r"secondary\s+router",
+    r"extra\s+router",
+    r"router\s+ko\s+kati",
+    r"router\s+ko\s+price",
+    r"net\s+tv",
+    r"iptv",
+]
+
+MEMORY_WRITE_PATTERNS = [
+    r"(?:mero naam|मेरो नाम)\s+[^\n,.!?।]{2,60}\s+(?:ho|हो)",
+    r"(?:my name is)\s+[A-Za-z][A-Za-z .'-]{1,60}",
+]
+
+LANGUAGE_REQUEST_PATTERNS = [
+    r"nepali\s+(?:ma|mā)\s+(?:type|lakh|bol)",
+    r"nepali\s+type\s+garn",
+    r"type\s+garn[aau]?\s+(?:na|n[aā])",
+    r"maithili\s+bhasa\s+auchha",
+]
+
+BOT_COMPLAINT_PATTERNS = [
+    r"mistake\s+lekhdai",
+    r"galat\s+lekhdai",
+    r"sabai\s+mistake",
+    r"type\s+garn[aau]?\s+audaina",
+    r"bujhna\s+maile",
+    r"sikera\s+aunus",
+    r"puchna\s+haina\s+sodhna",
+    r"jatibelani\s+tei\s+bhannu",
+    r"repeat",
+    r"same\s+thing",
 ]
 
 CORRECTION_PATTERNS = [
@@ -44,12 +89,7 @@ CORRECTION_PATTERNS = [
     r"\bgalat\b",
     r"\bwrong\b",
     r"\bnot\s+correct\b",
-    r"\bthat'?s\s+wrong\b",
-    r"\bpuchna\s+haina\b",
-    r"\bsodhna\s+parcha\b",
-    r"\bsodhnu\s+parcha\b",
     r"\bfix\s+it\b",
-    r"\bcorrect\s+it\b",
 ]
 
 ESCALATION_PATTERNS = [
@@ -57,28 +97,28 @@ ESCALATION_PATTERNS = [
     r"\bmanager\b",
     r"\bsupervisor\b",
     r"\bhuman\s+agent\b",
-    r"\breal\s+person\b",
-    r"\boffice\s+ma\s+bhannus\b",
     r"\bhamro\s+team\b",
-    r"\btapaiko\s+team\b",
-    r"\btapainko\s+team\b",
 ]
 
 GREETING_PATTERNS = [
     r"^(?:hello|hi|hey|namaste|namaskar)\b",
-    r"^(?:good\s+(?:morning|afternoon|evening))\b",
 ]
 
 SUPPORT_PATTERNS = [
     r"\bnot\s+working\b",
     r"\bslow\s+internet\b",
-    r"\bconnection\s+down\b",
     r"\bproblem\b",
-    r"\bissue\b",
-    r"\bsupport\b",
     r"\bcomplaint\b",
     r"\bbill\b",
-    r"\binvoice\b",
+]
+
+COVERAGE_EXCLUSION = [
+    r"\barea\b",
+    r"\bma\s+auncha\b",
+    r"\bavailable\b",
+    r"\bcoverage\b",
+    r"\bjodna\s+sakinchha\b",
+    r"\bchha\??\s*$",
 ]
 
 
@@ -87,6 +127,7 @@ class TurnRoute:
     turn_type: str
     suppress_catalog: bool = False
     suppress_phone_ask: bool = False
+    suppress_lead_context: bool = False
     force_sales_mode: bool = False
     direct_answer: str | None = None
     reason: str = ""
@@ -100,9 +141,21 @@ def _matches_any(text: str, patterns: list[str]) -> bool:
 def _company_info_answer(company_id: str, language: str) -> str:
     company = require_company(company_id)
     name = str(company.get("company_name") or company_id)
+    contact = get_company_contact(company_id)
+    location = str(company.get("location") or "")
     if language == "nepali":
-        return f"Yo {name} ko official AI employee ho."
-    return f"This is the official AI employee of {name}."
+        lines = [f"Yo {name} ko official AI employee ho."]
+        if location:
+            lines.append(f"Office: {location}")
+        if contact.get("toll_free"):
+            lines.append(f"Toll Free: {contact['toll_free']}")
+        elif contact.get("phone"):
+            lines.append(f"Phone: {contact['phone']}")
+        return " ".join(lines)
+    lines = [f"This is the official AI employee of {name}."]
+    if location:
+        lines.append(f"Office: {location}")
+    return " ".join(lines)
 
 
 def _ai_identity_answer(company_id: str, language: str) -> str:
@@ -119,22 +172,68 @@ def _ai_identity_answer(company_id: str, language: str) -> str:
     )
 
 
-def _escalation_answer(company_id: str, language: str) -> str:
-    company = require_company(company_id)
-    name = str(company.get("company_name") or company_id)
-    contact = get_company_contact(company_id)
-    phone = contact.get("phone") or contact.get("toll_free") or ""
+def _general_knowledge_answer(text: str, language: str) -> str:
+    normalized = (text or "").lower()
     if language == "nepali":
-        lines = [f"Thik cha. Ma {name} ko official team sanga tapailai jodna sakchu."]
-        if phone:
-            lines.append(f"Hamro team ko contact: {phone}")
-        lines.append("Tapailai ke help chahiyo bhane bhannus.")
-        return " ".join(lines)
-    lines = [f"Sure. I can connect you with the official {name} team."]
-    if phone:
-        lines.append(f"Our team contact: {phone}")
-    lines.append("Tell me what you need help with.")
-    return " ".join(lines)
+        if re.search(r"padhnu\s+bha", normalized):
+            return "Ma AI employee hu, manche jastai padhai gareko hoina. Ma tapailai company ko service ra package ko barema madat garna sakchu."
+        if re.search(r"maithili", normalized):
+            return "Maithili ma ahile fluent chhaina. Ma Nepali ra English ma madat garna sakchu."
+        if re.search(r"internet\s+ko\s+user|user\s+kati", normalized):
+            return "Nepal ma internet user ko thik sankhya ma sanga confirmed data chaina. Yo statistics ko lagi official source hernu parcha."
+        return "Yo prashna ko confirmed jawaf ma sanga chaina. Ma company ko internet service ra package ko barema matra madat garna sakchu."
+    if re.search(r"maithili", normalized):
+        return "I do not speak Maithili fluently yet. I can help in Nepali or English."
+    return "I do not have confirmed information for that question. I can help with our internet packages, coverage, and support."
+
+
+def _unknown_product_answer(language: str) -> str:
+    if language == "nepali":
+        return (
+            "Yo item ko confirmed price ma sanga chaina. "
+            "Hamro team le official rate confirm garera matra bhanncha. "
+            "Package pitch nagari yo barema matra sodhnus."
+        )
+    return (
+        "I do not have a confirmed price for that item. "
+        "Our team can confirm the official rate. I will not guess."
+    )
+
+
+def _memory_write_answer(name: str, language: str) -> str:
+    if language == "nepali":
+        return f"Dhanyabad {name}! Tapai ko naam save bhayo. Aru kehi chahiyo bhane bhannus."
+    return f"Thank you {name}. I have saved your name. Let me know if you need anything else."
+
+
+def _language_request_answer(language: str) -> str:
+    if language == "nepali":
+        return "Thik cha. Ab dekhi ma Nepali ma matra jawaf dinchhu."
+    return "Understood. I will reply in English only."
+
+
+def _bot_complaint_answer(language: str) -> str:
+    if language == "nepali":
+        return (
+            "Maaf garnuhos, agi ko jawaf confusing bhayo. "
+            "Ma feri sunchhu — tapai lai ke chahiyo? Package pitch nagari direct madat garchhu."
+        )
+    return "Sorry about the confusion. Tell me what you need and I will answer directly without repeating earlier messages."
+
+
+def _extract_name_from_write(text: str) -> str | None:
+    normalized = normalize_text(text)
+    patterns = [
+        r"(?:mero naam|मेरो नाम)\s+([^\n,.!?।]{2,60})\s+(?:ho|हो)",
+        r"(?:my name is)\s+([A-Za-z][A-Za-z .'-]{1,60})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, normalized, re.IGNORECASE)
+        if match:
+            name = match.group(1).strip(" .,!?:;")
+            if name and len(name.split()) <= 4:
+                return " ".join(part.capitalize() for part in name.split())
+    return None
 
 
 def route_turn(
@@ -156,7 +255,31 @@ def route_turn(
             turn_type="objection",
             suppress_catalog=True,
             suppress_phone_ask=objection in ("rejection", "escalation"),
+            suppress_lead_context=True,
             reason=f"objection={objection}",
+        )
+
+    if _matches_any(text, LANGUAGE_REQUEST_PATTERNS):
+        pref = "nepali" if re.search(r"nepali|maithili|type\s+garn", normalized) else language
+        return TurnRoute(
+            turn_type="language_request",
+            suppress_catalog=True,
+            suppress_phone_ask=True,
+            suppress_lead_context=True,
+            direct_answer=_language_request_answer(pref),
+            reason="language_request",
+        )
+
+    if _matches_any(text, BOT_COMPLAINT_PATTERNS) or detected_intent == "support" and _matches_any(
+        text, [r"mistake", r"galat", r"type\s+garn", r"bujhna"]
+    ):
+        return TurnRoute(
+            turn_type="correction",
+            suppress_catalog=True,
+            suppress_phone_ask=True,
+            suppress_lead_context=True,
+            direct_answer=_bot_complaint_answer(language),
+            reason="bot_complaint",
         )
 
     if _matches_any(text, AI_IDENTITY_PATTERNS):
@@ -164,27 +287,71 @@ def route_turn(
             turn_type="company_info",
             suppress_catalog=True,
             suppress_phone_ask=True,
+            suppress_lead_context=True,
             direct_answer=_ai_identity_answer(company_id, language),
             reason="ai_identity_query",
         )
 
-    if _matches_any(text, COMPANY_INFO_PATTERNS) and not _matches_any(
-        text, [r"\barea\b", r"\bma\s+auncha\b", r"\bavailable\b", r"\bcoverage\b", r"\bchha\??\s*$"]
-    ):
+    if _matches_any(text, COMPANY_INFO_PATTERNS) and not _matches_any(text, COVERAGE_EXCLUSION):
         return TurnRoute(
             turn_type="company_info",
             suppress_catalog=True,
             suppress_phone_ask=True,
+            suppress_lead_context=True,
             direct_answer=_company_info_answer(company_id, language),
             reason="company_name_query",
         )
 
+    if _matches_any(text, UNKNOWN_PRODUCT_PATTERNS):
+        return TurnRoute(
+            turn_type="unknown_product",
+            suppress_catalog=True,
+            suppress_phone_ask=True,
+            suppress_lead_context=True,
+            direct_answer=_unknown_product_answer(language),
+            reason="unknown_product_price",
+        )
+
+    if _matches_any(text, GENERAL_KNOWLEDGE_PATTERNS) or detected_intent == "general_knowledge":
+        return TurnRoute(
+            turn_type="general_knowledge",
+            suppress_catalog=True,
+            suppress_phone_ask=True,
+            suppress_lead_context=True,
+            direct_answer=_general_knowledge_answer(text, language),
+            reason="general_knowledge",
+        )
+
+    write_name = _extract_name_from_write(text)
+    if write_name and _matches_any(text, MEMORY_WRITE_PATTERNS):
+        return TurnRoute(
+            turn_type="memory_write",
+            suppress_catalog=True,
+            suppress_phone_ask=True,
+            suppress_lead_context=True,
+            direct_answer=_memory_write_answer(write_name, language),
+            reason=f"name_saved={write_name}",
+        )
+
     if _matches_any(text, ESCALATION_PATTERNS):
+        contact = get_company_contact(company_id)
+        phone = contact.get("phone") or contact.get("toll_free") or ""
+        company = require_company(company_id)
+        cname = str(company.get("company_name") or company_id)
+        if language == "nepali":
+            ans = f"Thik cha. {cname} ko hamro team sanga samparka garna saknuhunchha."
+            if phone:
+                ans += f" Contact: {phone}"
+        else:
+            ans = f"I can connect you with the {cname} team."
+            if phone:
+                ans += f" Contact: {phone}"
         return TurnRoute(
             turn_type="escalation",
             suppress_catalog=True,
             suppress_phone_ask=True,
-            direct_answer=_escalation_answer(company_id, language),
+            suppress_lead_context=True,
+            direct_answer=ans,
             reason="escalation_request",
         )
 
@@ -194,6 +361,7 @@ def route_turn(
             turn_type="memory_query",
             suppress_catalog=True,
             suppress_phone_ask=True,
+            suppress_lead_context=True,
             reason=f"memory_field={memory_field}",
         )
 
@@ -201,7 +369,8 @@ def route_turn(
         return TurnRoute(
             turn_type="correction",
             suppress_catalog=True,
-            suppress_phone_ask=bool(getattr(session, "phone_collected", False)),
+            suppress_phone_ask=True,
+            suppress_lead_context=True,
             reason="user_correction",
         )
 
@@ -210,6 +379,7 @@ def route_turn(
             turn_type="greeting",
             suppress_catalog=True,
             suppress_phone_ask=True,
+            suppress_lead_context=True,
             reason="greeting",
         )
 
@@ -218,7 +388,18 @@ def route_turn(
             turn_type="support",
             suppress_catalog=True,
             suppress_phone_ask=bool(getattr(session, "phone_collected", False)),
+            suppress_lead_context=True,
             reason=f"intent={detected_intent}",
+        )
+
+    coverage_count = int(getattr(session, "coverage_mention_count", 0) or 0)
+    if coverage_count >= 2 and detected_intent not in ("buying_intent", "pricing"):
+        return TurnRoute(
+            turn_type="general_knowledge",
+            suppress_catalog=True,
+            suppress_phone_ask=True,
+            suppress_lead_context=True,
+            reason="coverage_already_mentioned",
         )
 
     if detected_intent in ("buying_intent", "sales", "pricing", "coverage_inquiry"):
@@ -231,7 +412,8 @@ def route_turn(
 
     return TurnRoute(
         turn_type="general_knowledge",
-        suppress_catalog=bool(getattr(session, "pitch_count", 0) >= 2),
+        suppress_catalog=True,
         suppress_phone_ask=bool(getattr(session, "phone_collected", False)),
+        suppress_lead_context=True,
         reason="default",
     )

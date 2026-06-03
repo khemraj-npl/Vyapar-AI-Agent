@@ -22,6 +22,8 @@ class SessionState:
     pitch_count: int = 0
     phone_collected: bool = False
     escalation_requested: bool = False
+    language_locked: bool = False
+    coverage_mention_count: int = 0
     last_assistant_reply: str | None = None
     turn_count: int = 0
 
@@ -38,6 +40,8 @@ class SessionState:
             "pitch_count": self.pitch_count,
             "phone_collected": self.phone_collected,
             "escalation_requested": self.escalation_requested,
+            "language_locked": self.language_locked,
+            "coverage_mention_count": self.coverage_mention_count,
             "last_assistant_reply": self.last_assistant_reply,
             "turn_count": self.turn_count,
         }
@@ -56,6 +60,8 @@ def _record_to_state(record: ConversationState) -> SessionState:
         pitch_count=int(record.pitch_count or 0),
         phone_collected=bool(record.phone_collected),
         escalation_requested=bool(record.escalation_requested),
+        language_locked=bool(getattr(record, "language_locked", False)),
+        coverage_mention_count=int(getattr(record, "coverage_mention_count", 0) or 0),
         last_assistant_reply=record.last_assistant_reply,
         turn_count=int(record.turn_count or 0),
     )
@@ -91,6 +97,8 @@ def save_session_state(state: SessionState) -> SessionState:
         record.pitch_count = state.pitch_count
         record.phone_collected = state.phone_collected
         record.escalation_requested = state.escalation_requested
+        record.language_locked = state.language_locked
+        record.coverage_mention_count = state.coverage_mention_count
         record.last_assistant_reply = state.last_assistant_reply
         record.turn_count = state.turn_count
         session.flush()
@@ -169,6 +177,12 @@ def mark_escalation_requested(user_id: str, company_id: str) -> SessionState:
     return save_session_state(state)
 
 
+def increment_coverage_mention(user_id: str, company_id: str) -> SessionState:
+    state = get_session_state(user_id, company_id)
+    state.coverage_mention_count += 1
+    return save_session_state(state)
+
+
 def record_assistant_reply(user_id: str, company_id: str, reply: str) -> SessionState:
     state = get_session_state(user_id, company_id)
     state.last_assistant_reply = (reply or "").strip()
@@ -197,4 +211,20 @@ def session_state_to_prompt(state: SessionState) -> str:
         lines.append("- RULE: A package pitch was already given. Do NOT repeat the full package pitch.")
     if state.escalation_requested:
         lines.append("- RULE: Customer requested escalation. Share official contact only; no sales pitch.")
+    if state.coverage_mention_count >= 2:
+        lines.append("- RULE: Coverage already mentioned. Do NOT repeat coverage check language.")
     return "\n".join(lines)
+
+
+def log_memory_read(user_id: str, company_id: str, memory: dict[str, Any]) -> None:
+    logger.info(
+        "MEMORY_READ user_id=%s company_id=%s keys=%s",
+        user_id,
+        company_id,
+        [k for k, v in memory.items() if v and k != "user_id"],
+    )
+
+
+def log_memory_write(user_id: str, company_id: str, facts: dict[str, str]) -> None:
+    if facts:
+        logger.info("MEMORY_WRITE user_id=%s company_id=%s facts=%s", user_id, company_id, facts)

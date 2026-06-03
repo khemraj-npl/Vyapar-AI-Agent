@@ -82,6 +82,8 @@ class ConversationState(Base):
     pitch_count: Mapped[int] = mapped_column(Integer, default=0)
     phone_collected: Mapped[bool] = mapped_column(Boolean, default=False)
     escalation_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    language_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    coverage_mention_count: Mapped[int] = mapped_column(Integer, default=0)
     last_assistant_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     turn_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())

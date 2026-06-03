@@ -43,7 +43,10 @@ from sales_objection import (
 )
 from session_state_manager import (
     get_session_state,
+    increment_coverage_mention,
     increment_pitch_count,
+    log_memory_read,
+    log_memory_write,
     mark_escalation_requested,
     record_assistant_reply,
     save_session_state,
@@ -177,9 +180,26 @@ def _turn_router_prompt(turn_type: str) -> str:
         "escalation": "Turn: escalation. Share official company contact. Say 'hamro team', not 'tapainko team'.",
         "correction": "Turn: correction. Acknowledge the mistake and answer correctly.",
         "memory_query": "Turn: memory_query. Use saved memory only. Do not guess.",
+        "memory_write": "Turn: memory_write. Acknowledge saved fact only. No package pitch. No coverage mention.",
         "general_knowledge": "Turn: general. Answer the question directly without sales pitch.",
+        "unknown_product": "Turn: unknown_product. Say price is not confirmed. Do not pitch packages.",
+        "language_request": "Turn: language_request. Confirm language preference only.",
     }
     return hints.get(turn_type, hints["general_knowledge"])
+
+
+NON_SALES_TURNS = frozenset({
+    "greeting",
+    "company_info",
+    "memory_query",
+    "memory_write",
+    "support",
+    "correction",
+    "general_knowledge",
+    "unknown_product",
+    "language_request",
+    "meta",
+})
 
 
 def _resolve_sales_mode(
@@ -191,10 +211,11 @@ def _resolve_sales_mode(
     requested_speed: int | None,
     turn_route,
 ) -> tuple[bool, str]:
-    if turn_route.turn_type in ("greeting", "company_info", "memory_query", "support", "correction", "general_knowledge"):
-        if turn_route.turn_type == "general_knowledge" and detected_intent not in ("buying_intent", "sales", "pricing"):
-            return False, f"turn={turn_route.turn_type}"
-    if turn_route.force_sales_mode:
+    if turn_route.turn_type in NON_SALES_TURNS:
+        return False, f"turn={turn_route.turn_type}"
+    if getattr(turn_route, "suppress_lead_context", False):
+        return False, f"turn={turn_route.turn_type}_no_lead"
+    if turn_route.force_sales_mode and turn_route.turn_type == "sales":
         return True, f"turn={turn_route.turn_type}"
 
     if bundle.buying_intent:
@@ -241,6 +262,8 @@ def _finalize_reply(
         phone_collected=session.phone_collected,
         suppress_catalog=turn_route.suppress_catalog,
         known_phone=session.phone,
+        turn_type=turn_route.turn_type,
+        coverage_mention_count=session.coverage_mention_count,
     )
 
     final_reply = validation.sanitized_reply or reply
@@ -270,8 +293,19 @@ def _finalize_reply(
     if sales_mode and product_block and not turn_route.suppress_catalog:
         increment_pitch_count(user_id, tenant_id)
 
+    if _contains_coverage_language(final_reply):
+        increment_coverage_mention(user_id, tenant_id)
+
     record_assistant_reply(user_id, tenant_id, final_reply)
     return final_reply[:MAX_TELEGRAM_REPLY]
+
+
+def _contains_coverage_language(text: str) -> bool:
+    lower = (text or "").lower()
+    return any(
+        token in lower
+        for token in ("coverage check", "coverage janch", "coverage confirm", "area ko coverage")
+    )
 
 
 async def generate_employee_reply(user_id: str, text: str, company_id: str | None = None) -> str:
@@ -285,16 +319,23 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
 
     detected_lang = detect_language(clean_text)
     session = get_session_state(user_id, tenant_id)
-    session.language = resolve_session_language(session.language, detected_lang)
+    session.language, session.language_locked = resolve_session_language(
+        session.language,
+        detected_lang,
+        user_text=clean_text,
+        language_locked=session.language_locked,
+        locked_language=session.language,
+    )
 
     memory = read_memory(user_id)
+    log_memory_read(user_id, tenant_id, memory)
     raw_facts = extract_memory_facts(clean_text)
     facts = validate_memory_facts(clean_text, raw_facts)
     if raw_facts and facts != raw_facts:
         rejected = {k: v for k, v in raw_facts.items() if k not in facts}
         logger.info("MEMORY_FACTS_REJECTED user_id=%s company_id=%s rejected=%s", user_id, tenant_id, rejected)
     if facts:
-        logger.info("MEMORY_FACTS_EXTRACTED user_id=%s company_id=%s facts=%s", user_id, tenant_id, facts)
+        log_memory_write(user_id, tenant_id, facts)
         update_memory_from_facts(user_id, facts)
         for context_line in facts_to_context(facts):
             save_context(user_id, context_line)
@@ -317,6 +358,13 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
     save_session_state(session)
 
     detected_intent = detect_intent(clean_text)
+    logger.info(
+        "INTENT_DETECTED user_id=%s company_id=%s intent=%s text=%s",
+        user_id,
+        tenant_id,
+        detected_intent,
+        clean_text[:120],
+    )
     sales_objection = detect_sales_objection(clean_text)
     turn_route = route_turn(
         clean_text,
@@ -328,13 +376,19 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
     )
 
     logger.info(
-        "TURN_ROUTED user_id=%s company_id=%s turn=%s reason=%s suppress_catalog=%s",
+        "TURN_ROUTED user_id=%s company_id=%s turn=%s reason=%s suppress_catalog=%s suppress_lead=%s",
         user_id,
         tenant_id,
         turn_route.turn_type,
         turn_route.reason,
         turn_route.suppress_catalog,
+        turn_route.suppress_lead_context,
     )
+
+    if turn_route.turn_type == "language_request":
+        session.language = "nepali" if "nepali" in clean_text.lower() or "type garn" in clean_text.lower() else session.language
+        session.language_locked = True
+        save_session_state(session)
 
     if turn_route.direct_answer:
         reply = _finalize_reply(
@@ -371,7 +425,7 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
 
     bundle = extract_lead_bundle(clean_text, memory, channel="telegram", user_id=user_id)
 
-    if should_process_lead(bundle):
+    if should_process_lead(bundle) and not turn_route.suppress_lead_context:
         logger.info(
             "LEAD_SIGNALS_DETECTED user_id=%s company_id=%s buying=%s score=%s stage=%s signals=%s",
             user_id,
@@ -384,7 +438,7 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
 
     exact_product, alternative_product, requested_speed = find_best_product_match(clean_text, company_id=tenant_id)
 
-    if should_process_lead(bundle):
+    if should_process_lead(bundle) and not turn_route.suppress_lead_context:
         lead = upsert_lead(
             user_id=user_id,
             company_id=tenant_id,
@@ -458,8 +512,16 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
             product_block = products_to_prompt(product_items, company_id=tenant_id, include_full_catalog=True)
 
     knowledge_items = search_knowledge(clean_text, top_n=5)
-    lead_block = lead_to_prompt(lead)
-    sales_memory_block = sales_memory_to_prompt(lead)
+    lead_block = "" if turn_route.suppress_lead_context or not sales_mode else lead_to_prompt(lead)
+    sales_memory_block = "" if turn_route.suppress_lead_context or not sales_mode else sales_memory_to_prompt(lead)
+
+    logger.info(
+        "LANGUAGE_LOCK_APPLIED user_id=%s company_id=%s language=%s locked=%s",
+        user_id,
+        tenant_id,
+        session.language,
+        session.language_locked,
+    )
 
     system_prompt = compose_system_prompt(
         business_block=business_context_to_prompt(tenant_id),

@@ -91,6 +91,10 @@ def validate_memory_facts(text: str, facts: dict[str, str]) -> dict[str, str]:
         return {}
 
     validated: dict[str, str] = {}
+    name_only_turn = bool(facts.get("name")) and not any(
+        facts.get(k) for k in ("phone", "city", "package_interest", "company_name")
+    )
+
     for key, value in facts.items():
         if not value:
             continue
@@ -104,6 +108,8 @@ def validate_memory_facts(text: str, facts: dict[str, str]) -> dict[str, str]:
                 validated[key] = value
             else:
                 logger.info("MEMORY_PHONE_REJECTED candidate=%s reason=not_in_source_text", value)
+        elif key == "package_interest" and name_only_turn:
+            logger.info("MEMORY_PACKAGE_SKIPPED reason=name_only_turn candidate=%s", value)
         else:
             validated[key] = value
 
