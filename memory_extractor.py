@@ -16,7 +16,10 @@ CITY_ALIASES = {
     "bharatpur": "Bharatpur", "chitwan": "Chitwan", "bhaktapur": "Bhaktapur",
     "butwal": "Butwal", "biratnagar": "Biratnagar", "birgunj": "Birgunj",
     "nepalgunj": "Nepalgunj", "dharan": "Dharan", "hetauda": "Hetauda", "itahari": "Itahari",
+    "banepa": "Banepa", "banepama": "Banepa", "bane pa": "Banepa",
 }
+
+NEPAL_MOBILE_RE = re.compile(r"^9[78]\d{8}$")
 
 QUESTION_PATTERNS = [
     r"\?", r"\bwhat\b", r"\bwho\b", r"\bwhere\b", r"\bwhen\b", r"\bwhich\b",
@@ -90,6 +93,13 @@ def extract_phone(text: str) -> str | None:
     return None
 
 
+def is_valid_nepal_mobile(value: str | None) -> bool:
+    if not value:
+        return False
+    digits = re.sub(r"\D", "", str(value))
+    return bool(NEPAL_MOBILE_RE.match(digits))
+
+
 def _title_case_name(name: str) -> str:
     return " ".join(part.capitalize() for part in name.split())
 
@@ -141,6 +151,9 @@ def extract_city(text: str) -> str | None:
                     if alias in raw.lower():
                         return canonical
                 return raw.title()
+
+    if re.search(r"banepa\s*ma\b", text_lower):
+        return "Banepa"
 
     for alias, canonical in CITY_ALIASES.items():
         if alias in text_lower:

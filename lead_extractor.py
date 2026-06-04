@@ -10,6 +10,7 @@ from memory_extractor import (
     extract_name,
     extract_package_interest,
     extract_phone,
+    is_valid_nepal_mobile,
     normalize_text,
 )
 
@@ -17,11 +18,16 @@ LEAD_STAGES = ("new", "interested", "qualified", "hot")
 
 BUYING_INTENT_PATTERNS = [
     r"internet\s+jodn[uūa]?(\s+chh?[au]|u\s+chh?[au])?",
-    r"jodn[uūa]?\s+chh?[au]",
-    r"jodnu\s+chh?[au]",
+    r"jodn[uūae]?\b",
+    r"jodnu\s+chha",
+    r"jodne\b",
     r"package\s+lin[aā]?(\s+chh?[au]|u\s+chh?[au])?",
     r"lina\s+chh?[au]",
-    r"linu\s+chh?[au]",
+    r"linu\b",
+    r"chahiy[oō]",
+    r"\bthiyo\b",
+    r"rakhchhu",
+    r"rakhne",
     r"net\s+chahiy[oō]",
     r"internet\s+chahiy[oō]",
     r"connection\s+chahiy[oō]",
@@ -31,6 +37,9 @@ BUYING_INTENT_PATTERNS = [
     r"\bsubscribe\b",
     r"lagau",
     r"laguna",
+    r"\d+\s*mbps",
+    r"mbps\s+(?:chahiy|rakhchhu|linu|lina|rakhne)",
+    r"net\s+jod",
 ]
 
 CONTACT_METHOD_PATTERNS: dict[str, list[str]] = {
@@ -119,6 +128,8 @@ def extract_location(text: str) -> str | None:
     if city:
         return city
     normalized = normalize_text(text)
+    if re.search(r"banepa\s*ma\b", normalized, re.IGNORECASE):
+        return "Banepa"
     area_match = re.search(
         r"\b([A-Za-z][A-Za-z\s\-]{2,40})\s+ma\b",
         normalized,
@@ -198,11 +209,11 @@ def extract_lead_fields(text: str, memory: dict[str, Any]) -> dict[str, str]:
 
 
 def _has_phone_or_whatsapp(fields: dict[str, str], contact_method: str, contact_value: str | None) -> bool:
-    if fields.get("phone"):
+    if fields.get("phone") and is_valid_nepal_mobile(fields["phone"]):
         return True
-    if contact_method == "whatsapp" and contact_value:
+    if contact_method == "whatsapp" and is_valid_nepal_mobile(contact_value):
         return True
-    if contact_method == "phone" and contact_value:
+    if contact_method == "phone" and is_valid_nepal_mobile(contact_value):
         return True
     return False
 
@@ -237,8 +248,12 @@ def compute_lead_score(
         score += 10
     elif urgency == "medium":
         score += 5
-    if fields.get("phone") or contact_method in ("phone", "whatsapp"):
-        score += 20 if fields.get("phone") or contact_method == "phone" else 18
+    if fields.get("phone") and is_valid_nepal_mobile(fields["phone"]):
+        score += 20
+    elif contact_method == "whatsapp" and is_valid_nepal_mobile(contact_value):
+        score += 18
+    elif contact_method == "phone" and is_valid_nepal_mobile(contact_value):
+        score += 20
     if fields.get("customer_name"):
         score += 5
     if contact_method == "telegram" and contact_value:

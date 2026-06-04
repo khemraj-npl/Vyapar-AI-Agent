@@ -184,6 +184,8 @@ def _turn_router_prompt(turn_type: str) -> str:
         "general_knowledge": "Turn: general. Answer the question directly without sales pitch.",
         "unknown_product": "Turn: unknown_product. Say price is not confirmed. Do not pitch packages.",
         "language_request": "Turn: language_request. Confirm language preference only.",
+        "meta": "Turn: meta. Explain your role as AI employee. No package pitch.",
+        "follow_up": "Turn: follow_up. Ask what the user needs. No generic 'no information' reply.",
     }
     return hints.get(turn_type, hints["general_knowledge"])
 
@@ -199,6 +201,7 @@ NON_SALES_TURNS = frozenset({
     "unknown_product",
     "language_request",
     "meta",
+    "follow_up",
 })
 
 
@@ -264,6 +267,7 @@ def _finalize_reply(
         known_phone=session.phone,
         turn_type=turn_route.turn_type,
         coverage_mention_count=session.coverage_mention_count,
+        is_direct_answer=bool(turn_route.direct_answer),
     )
 
     final_reply = validation.sanitized_reply or reply
@@ -326,6 +330,7 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
         language_locked=session.language_locked,
         locked_language=session.language,
     )
+    save_session_state(session)
 
     memory = read_memory(user_id)
     log_memory_read(user_id, tenant_id, memory)
@@ -353,6 +358,7 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
         lead=lead,
         facts=facts,
         language=session.language,
+        language_locked=session.language_locked,
     )
     session.turn_count += 1
     save_session_state(session)
@@ -386,7 +392,8 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
     )
 
     if turn_route.turn_type == "language_request":
-        session.language = "nepali" if "nepali" in clean_text.lower() or "type garn" in clean_text.lower() else session.language
+        wants_english = bool(re.search(r"english|kura\s+garam", clean_text.lower()))
+        session.language = "english" if wants_english else "nepali"
         session.language_locked = True
         save_session_state(session)
 

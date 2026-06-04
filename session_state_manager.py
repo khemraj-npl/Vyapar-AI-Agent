@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from memory_db import ConversationState, get_session
+from memory_extractor import is_valid_nepal_mobile
 
 logger = logging.getLogger("vyapar.session_state")
 
@@ -113,6 +114,7 @@ def sync_session_state(
     lead: Any | None = None,
     facts: dict[str, str] | None = None,
     language: str | None = None,
+    language_locked: bool | None = None,
 ) -> SessionState:
     """Merge durable memory, lead row, and fresh facts into session state."""
     state = get_session_state(user_id, company_id)
@@ -121,6 +123,8 @@ def sync_session_state(
 
     if language:
         state.language = language
+    if language_locked is not None:
+        state.language_locked = language_locked
 
     state.name = facts.get("name") or memory.get("name") or state.name
     state.location = (
@@ -138,8 +142,10 @@ def sync_session_state(
 
     phone = facts.get("phone") or memory.get("phone")
     if not phone and lead:
-        phone = getattr(lead, "phone", None) or getattr(lead, "contact_value", None)
-    if phone:
+        lead_phone = getattr(lead, "phone", None)
+        if lead_phone and is_valid_nepal_mobile(lead_phone):
+            phone = lead_phone
+    if phone and is_valid_nepal_mobile(phone):
         state.phone = phone
         state.phone_collected = True
 
@@ -166,6 +172,8 @@ def increment_pitch_count(user_id: str, company_id: str) -> SessionState:
 
 def mark_phone_collected(user_id: str, company_id: str, phone: str) -> SessionState:
     state = get_session_state(user_id, company_id)
+    if not is_valid_nepal_mobile(phone):
+        return state
     state.phone = phone.strip()
     state.phone_collected = True
     return save_session_state(state)

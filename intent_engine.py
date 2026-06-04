@@ -5,12 +5,45 @@ import re
 
 logger = logging.getLogger("vyapar.intent")
 
+GREETING_RE = re.compile(r"\b(?:hello|hey|namaste|namaskar)\b", re.IGNORECASE)
+# Standalone "hi" only — never match inside chahiyo/mahinako/bujhina/thiyo.
+HI_GREETING_RE = re.compile(r"(?:^|\s)hi(?:\s|$|[,.!?])", re.IGNORECASE)
+
+SALES_SIGNAL_PATTERNS = [
+    r"\d+\s*mbps",
+    r"mbps\s+(?:chahiy|rakhchhu|linu|lina|rakhne)",
+    r"chahiy[oō]",
+    r"rakhchhu",
+    r"rakhne",
+    r"\bthiyo\b",
+    r"jodn[uūae]?\b",
+    r"jodnu\s+chha",
+    r"jodne\b",
+    r"net\s+jod",
+    r"linu\b",
+    r"mahina(?:ko)?\s+kati",
+    r"kati\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+]
+
+
+def _has_sales_signal(text: str) -> bool:
+    return any(re.search(p, text) for p in SALES_SIGNAL_PATTERNS)
+
+
+def _is_greeting(text: str) -> bool:
+    if _has_sales_signal(text):
+        return False
+    if GREETING_RE.search(text):
+        return True
+    return bool(HI_GREETING_RE.search(text))
+
 
 def _is_general_knowledge(text: str) -> bool:
+    if _has_sales_signal(text):
+        return False
     patterns = [
         r"internet\s+ko\s+user\s+kati",
         r"user\s+kati\s+chha",
-        r"kati\s+padhnu\s+bha",
         r"kati\s+padhnu\s+bha",
         r"padhnu\s+bhayeko",
         r"maithili\s+bhasa",
@@ -23,18 +56,20 @@ def _is_general_knowledge(text: str) -> bool:
         r"secondary\s+router",
         r"router\s+ko\s+kati",
         r"confirmed\s+jankari\s+chaina",
+        r"bujhina\s+maile",
+        r"bujhna\s+maile",
     ]
     return any(re.search(p, text) for p in patterns)
 
 
 def _is_pricing_intent(text: str) -> bool:
-    if _is_general_knowledge(text):
-        return False
+    if re.search(r"mahina(?:ko)?\s+kati", text):
+        return True
     if re.search(r"kati\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)", text):
         return True
-    if any(word in text for word in ["price", "pricing", "cost", "how much", "rate", "package"]):
+    if any(word in text for word in ["price", "pricing", "cost", "how much", "rate"]):
         return True
-    if "kati" in text and re.search(r"\b(?:mbps|router|package|net|internet|npr|rs)\b", text):
+    if "kati" in text and re.search(r"\b(?:mbps|router|package|net|internet|npr|rs|mahina)\b", text):
         return True
     return False
 
@@ -42,14 +77,23 @@ def _is_pricing_intent(text: str) -> bool:
 def _is_buying_intent(text: str) -> bool:
     patterns = [
         r"internet\s+jodn",
-        r"jodn[uūa]?\s+chh?[au]",
+        r"jodn[uūae]?\b",
+        r"jodnu\s+chha",
+        r"jodne\b",
         r"package\s+lin",
         r"lina\s+chh?[au]",
+        r"linu\b",
+        r"chahiy[oō]",
+        r"\bthiyo\b",
+        r"rakhchhu",
+        r"rakhne",
         r"net\s+chahiy",
         r"internet\s+chahiy",
         r"connection\s+chahiy",
         r"install\s+garn",
-        r"\d+\s*mbps\s+jod",
+        r"\d+\s*mbps",
+        r"mbps\s+(?:chahiy|rakhchhu|linu|lina|rakhne)",
+        r"net\s+jod",
     ]
     return any(re.search(pattern, text) for pattern in patterns)
 
@@ -62,7 +106,7 @@ def _is_coverage_inquiry(text: str) -> bool:
         r"hamro\s+area",
         r"service\s+auncha",
         r"jodna\s+sakinchha",
-        r"banepa\s+ma",
+        r"banepa\s*ma",
         r"kaile\s+check\s+hunchha",
     ]
     return any(re.search(pattern, text) for pattern in patterns)
@@ -71,17 +115,19 @@ def _is_coverage_inquiry(text: str) -> bool:
 def detect_intent(text: str) -> str:
     t = (text or "").lower()
 
-    if _is_general_knowledge(t):
-        return "general_knowledge"
     if _is_buying_intent(t):
         return "buying_intent"
-    if _is_coverage_inquiry(t):
-        return "coverage_inquiry"
-    if any(word in t for word in ["hello", "hi", "namaste", "namaskar", "hey"]):
-        return "greeting"
     if _is_pricing_intent(t):
         return "pricing"
-    if any(word in t for word in ["buy", "purchase", "subscribe", "plan"]) and "service" not in t:
+    if _is_coverage_inquiry(t):
+        return "coverage_inquiry"
+    if _is_general_knowledge(t):
+        return "general_knowledge"
+    if _is_greeting(t):
+        return "greeting"
+    if any(word in t for word in ["buy", "purchase", "subscribe"]) and "service" not in t:
+        return "sales"
+    if "plan" in t and re.search(r"\b(?:mbps|package|net|internet)\b", t):
         return "sales"
     if re.search(r"\b(?:problem|issue|not working|down|slow|support|mistake|galat)\b", t):
         return "support"
@@ -93,6 +139,8 @@ def detect_intent(text: str) -> str:
         return "complaint"
     if re.search(r"\b(?:mero naam|my name|mero phone)\b", t):
         return "identity"
+    if _has_sales_signal(t):
+        return "buying_intent"
     return "general"
 
 

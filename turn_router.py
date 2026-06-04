@@ -24,6 +24,8 @@ COMPANY_INFO_PATTERNS = [
     r"\bisp\s+ko\s+naam\b",
     r"^ko\s+net\s+ho\b",
     r"^kun\s+net\s+ho\b",
+    r"\bhons\s+ke\s+ho\b",
+    r"\b\w+\s+ke\s+ho\s*$",
     r"\btimro\s+office\b",
     r"\btapaiko\s+office\b",
     r"\boffice\s+kaha\b",
@@ -63,24 +65,54 @@ MEMORY_WRITE_PATTERNS = [
     r"(?:my name is)\s+[A-Za-z][A-Za-z .'-]{1,60}",
 ]
 
-LANGUAGE_REQUEST_PATTERNS = [
-    r"nepali\s+(?:ma|mā)\s+(?:type|lakh|bol)",
-    r"nepali\s+type\s+garn",
-    r"type\s+garn[aau]?\s+(?:na|n[aā])",
-    r"maithili\s+bhasa\s+auchha",
-]
-
 BOT_COMPLAINT_PATTERNS = [
     r"mistake\s+lekhdai",
     r"galat\s+lekhdai",
     r"sabai\s+mistake",
     r"type\s+garn[aau]?\s+audaina",
+    r"bujhina\s+maile",
     r"bujhna\s+maile",
     r"sikera\s+aunus",
     r"puchna\s+haina\s+sodhna",
     r"jatibelani\s+tei\s+bhannu",
     r"repeat",
     r"same\s+thing",
+]
+
+AFFIRMATIVE_PATTERNS = [
+    r"dinu\s+na\s+ta",
+    r"dinu\s+ta",
+    r"deu\s+na",
+    r"thik\s+cha",
+    r"thik\s+chha",
+    r"^hunchha$",
+    r"^huncha$",
+    r"^la$",
+    r"^lau$",
+]
+
+META_PATTERNS = [
+    r"kasto\s+kaaryakram",
+    r"kasto\s+karyakram",
+    r"english\s+letter",
+    r"translate\s+garn",
+    r"kina\s+save\s+garn",
+    r"information\s+collect",
+    r"bechnu\s+hunchha",
+    r"privacy",
+    r"data\s+sell",
+]
+
+LANGUAGE_REQUEST_PATTERNS = [
+    r"nepali\s+(?:ma|mā)\s+(?:type|lakh|bol|bhan|bhannu|bhannus|kura)",
+    r"nepali\s+ma\s+bhannus",
+    r"bhannus\s+na",
+    r"nepali\s+type\s+garn",
+    r"type\s+garn[aau]?\s+(?:na|n[aā])",
+    r"english\s+ma\s+kura",
+    r"kura\s+garam",
+    r"maithili\s+bhasa\s+auchha",
+    r"language\s+nepali",
 ]
 
 CORRECTION_PATTERNS = [
@@ -120,6 +152,39 @@ COVERAGE_EXCLUSION = [
     r"\bjodna\s+sakinchha\b",
     r"\bchha\??\s*$",
 ]
+
+SALES_INTENTS = frozenset({"buying_intent", "sales", "pricing", "coverage_inquiry"})
+
+SALES_TEXT_PATTERNS = [
+    r"\d+\s*mbps",
+    r"mbps\s+(?:chahiy|rakhchhu|linu|lina|rakhne)",
+    r"chahiy[oō]",
+    r"rakhchhu",
+    r"rakhne",
+    r"\bthiyo\b",
+    r"jodn[uūae]?\b",
+    r"jodnu\s+chha",
+    r"jodne\b",
+    r"net\s+jod",
+    r"linu\b",
+    r"mahina(?:ko)?\s+kati",
+    r"kati\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+]
+
+
+def _should_force_sales(text: str, detected_intent: str) -> bool:
+    if detected_intent in SALES_INTENTS:
+        return True
+    return _matches_any(text, SALES_TEXT_PATTERNS)
+
+
+def _sales_route(session: Any, detected_intent: str, reason: str) -> TurnRoute:
+    return TurnRoute(
+        turn_type="sales",
+        force_sales_mode=True,
+        suppress_phone_ask=bool(getattr(session, "phone_collected", False)),
+        reason=reason,
+    )
 
 
 @dataclass
@@ -206,7 +271,54 @@ def _memory_write_answer(name: str, language: str) -> str:
     return f"Thank you {name}. I have saved your name. Let me know if you need anything else."
 
 
-def _language_request_answer(language: str) -> str:
+def _meta_answer(text: str, company_id: str, language: str) -> str:
+    normalized = (text or "").lower()
+    company = require_company(company_id)
+    name = str(company.get("company_name") or company_id)
+    if language == "nepali":
+        if re.search(r"kina\s+save|collect|bechnu", normalized):
+            return (
+                f"Naam save gareko karan: tapailai personal service dina. "
+                f"Ma {name} ko AI employee hu — ma tapaiko data bechdina. "
+                f"Naam, phone, ra location matra service ko lagi use huncha."
+            )
+        if re.search(r"english\s+letter|translate", normalized):
+            return (
+                "Ma Nepali ma bolchu. Romanized (English letters) wa Devanagari dono chalchha. "
+                "Ma translate engine hoina — sidhai Nepali ma jawaf dinchu."
+            )
+        return (
+            f"Ma {name} ko AI employee hu. "
+            f"Internet package, coverage, installation, ra support ko barema madat garchhu."
+        )
+    if re.search(r"save|collect|sell|privacy", normalized):
+        return (
+            f"I save your name only to personalize service. "
+            f"I am the AI employee of {name}. I do not sell your data."
+        )
+    return (
+        f"I am the AI employee of {name}. "
+        f"I help with internet packages, coverage, installation, and support."
+    )
+
+
+def _affirmative_answer(language: str) -> str:
+    if language == "nepali":
+        return (
+            "Thik cha. Tapai lai ke chahiyo? "
+            "Internet package, coverage check, price, wa support — bhannus."
+        )
+    return "Sure. What do you need — packages, coverage, pricing, or support?"
+
+
+def _language_request_answer(text: str, language: str) -> str:
+    normalized = (text or "").lower()
+    if re.search(r"english", normalized):
+        return "Sure. I will reply in English only from now on."
+    return _language_request_answer_legacy(language)
+
+
+def _language_request_answer_legacy(language: str) -> str:
     if language == "nepali":
         return "Thik cha. Ab dekhi ma Nepali ma matra jawaf dinchhu."
     return "Understood. I will reply in English only."
@@ -260,14 +372,34 @@ def route_turn(
         )
 
     if _matches_any(text, LANGUAGE_REQUEST_PATTERNS):
-        pref = "nepali" if re.search(r"nepali|maithili|type\s+garn", normalized) else language
+        wants_english = bool(re.search(r"english|kura\s+garam", normalized))
         return TurnRoute(
             turn_type="language_request",
             suppress_catalog=True,
             suppress_phone_ask=True,
             suppress_lead_context=True,
-            direct_answer=_language_request_answer(pref),
+            direct_answer=_language_request_answer(text, "english" if wants_english else language),
             reason="language_request",
+        )
+
+    if _matches_any(text, AFFIRMATIVE_PATTERNS):
+        return TurnRoute(
+            turn_type="follow_up",
+            suppress_catalog=True,
+            suppress_phone_ask=True,
+            suppress_lead_context=True,
+            direct_answer=_affirmative_answer(language),
+            reason="affirmative",
+        )
+
+    if _matches_any(text, META_PATTERNS):
+        return TurnRoute(
+            turn_type="meta",
+            suppress_catalog=True,
+            suppress_phone_ask=True,
+            suppress_lead_context=True,
+            direct_answer=_meta_answer(text, company_id, language),
+            reason="meta_question",
         )
 
     if _matches_any(text, BOT_COMPLAINT_PATTERNS) or detected_intent == "support" and _matches_any(
@@ -281,6 +413,9 @@ def route_turn(
             direct_answer=_bot_complaint_answer(language),
             reason="bot_complaint",
         )
+
+    if _should_force_sales(text, detected_intent):
+        return _sales_route(session, detected_intent, f"intent={detected_intent}")
 
     if _matches_any(text, AI_IDENTITY_PATTERNS):
         return TurnRoute(
@@ -374,7 +509,9 @@ def route_turn(
             reason="user_correction",
         )
 
-    if _matches_any(text, GREETING_PATTERNS) or detected_intent == "greeting":
+    if _matches_any(text, GREETING_PATTERNS) or (
+        detected_intent == "greeting" and not _should_force_sales(text, detected_intent)
+    ):
         return TurnRoute(
             turn_type="greeting",
             suppress_catalog=True,
@@ -402,13 +539,8 @@ def route_turn(
             reason="coverage_already_mentioned",
         )
 
-    if detected_intent in ("buying_intent", "sales", "pricing", "coverage_inquiry"):
-        return TurnRoute(
-            turn_type="sales",
-            force_sales_mode=True,
-            suppress_phone_ask=bool(getattr(session, "phone_collected", False)),
-            reason=f"intent={detected_intent}",
-        )
+    if detected_intent in SALES_INTENTS or _should_force_sales(text, detected_intent):
+        return _sales_route(session, detected_intent, f"intent={detected_intent}")
 
     return TurnRoute(
         turn_type="general_knowledge",

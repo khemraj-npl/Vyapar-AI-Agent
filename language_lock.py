@@ -37,8 +37,18 @@ NEPALI_LOCK_REQUEST = [
 ENGLISH_LOCK_REQUEST = [
     r"\bin english\b",
     r"english\s+ma",
+    r"english\s+ma\s+kura",
+    r"kura\s+garam",
     r"only\s+english",
+    r"talk\s+in\s+english",
+    r"speak\s+english",
 ]
+
+# Single-word inputs that must NOT flip a locked language.
+NEUTRAL_WORDS = frozenset({
+    "okay", "ok", "yes", "no", "hi", "hello", "hey", "sure", "thanks", "thank",
+    "please", "hmm", "hm", "ya", "yep", "nope", "fine", "good", "great",
+})
 
 EMOJI_ONLY = re.compile(
     r"^[\s\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0000FE00-\U0000FE0F\U0000200D\U0001F1E0-\U0001F1FF😀-🙏👍-🙂😇😊]+$",
@@ -67,12 +77,12 @@ def detect_language(text: str) -> str:
     if EMOJI_ONLY.match(normalized.strip()):
         return "english"
 
+    tokens = re.findall(r"[a-z]+", normalized)
+    if len(tokens) == 1 and tokens[0] in NEUTRAL_WORDS:
+        return "neutral"
+
     if NEPALI_SCRIPT.search(text):
         return "nepali"
-
-    tokens = re.findall(r"[a-z]+", normalized)
-    if not tokens:
-        return "english"
 
     nepali_hits = sum(1 for token in tokens if token in NEPALI_WORDS)
     english_hits = sum(1 for token in tokens if token in ENGLISH_INDICATORS)
@@ -107,24 +117,26 @@ def resolve_session_language(
         return "english", True
 
     if language_locked and locked_language in ("nepali", "english"):
-        if _alpha_count(user_text) < 3 or EMOJI_ONLY.match((user_text or "").strip()):
+        if detected == "neutral" or _alpha_count(user_text) < 3 or EMOJI_ONLY.match((user_text or "").strip()):
             logger.info("LANGUAGE_LOCK_APPLIED language=%s reason=sticky_short_input", locked_language)
             return locked_language, True
         if detected == locked_language:
             return locked_language, True
-        if detected != locked_language and _alpha_count(user_text) >= 8:
+        if detected != locked_language and detected != "neutral" and _alpha_count(user_text) >= 10:
             logger.info("LANGUAGE_LOCK_APPLIED language=%s reason=user_switched", detected)
-            return detected, False
+            return detected, True
         logger.info("LANGUAGE_LOCK_APPLIED language=%s reason=sticky", locked_language)
         return locked_language, True
+
+    if detected == "neutral":
+        return current or "english", language_locked
 
     if _alpha_count(user_text) < 3 or EMOJI_ONLY.match((user_text or "").strip()):
         return current or "english", language_locked
 
     if detected in ("nepali", "english"):
-        lock = detected == "nepali"
-        if lock:
-            logger.info("LANGUAGE_LOCK_APPLIED language=nepali reason=auto_detect")
+        lock = True
+        logger.info("LANGUAGE_LOCK_APPLIED language=%s reason=auto_detect", detected)
         return detected, lock
 
     return current or "english", language_locked
