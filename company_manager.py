@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Any
 
-# Profile persistence: JSON file (Phase 1). Swap _load_all_profiles() for a DB
-# repository in Phase 2 without changing callers of get_company*().
+# Profile persistence: DB-backed (Phase 2) with a one-time seed from the JSON
+# file. Callers of get_company*() are unchanged; _load_all_profiles() now reads
+# from the database so the owner dashboard can edit profiles at runtime.
 _PROFILES_FILENAME = "company_profiles.json"
 _PROFILES_PATH = Path(__file__).resolve().parent / _PROFILES_FILENAME
+
+logger = logging.getLogger("vyapar.company")
 
 
 class CompanyProfileError(LookupError):
@@ -31,7 +35,7 @@ def _profiles_file_path() -> Path:
     return _PROFILES_PATH
 
 
-def _load_all_profiles() -> dict[str, Any]:
+def _load_profiles_from_file() -> dict[str, Any]:
     path = _profiles_file_path()
     if not path.is_file():
         return {}
@@ -40,6 +44,80 @@ def _load_all_profiles() -> dict[str, Any]:
     if not isinstance(data, dict):
         raise CompanyProfileError("", "has invalid format")
     return data
+
+
+def _load_profiles_from_db() -> dict[str, Any]:
+    """Return {company_id: profile} from the DB, or {} if unavailable/empty."""
+    try:
+        from memory_db import CompanyProfileRecord, get_session
+
+        profiles: dict[str, Any] = {}
+        with get_session() as session:
+            for row in session.query(CompanyProfileRecord).all():
+                try:
+                    profiles[row.company_id] = json.loads(row.data_json)
+                except (TypeError, ValueError):
+                    continue
+        return profiles
+    except Exception:
+        # DB not initialised yet (e.g. standalone script) — fall back to file.
+        return {}
+
+
+def _seed_profiles_to_db(profiles: dict[str, Any]) -> None:
+    try:
+        from memory_db import CompanyProfileRecord, get_session
+
+        with get_session() as session:
+            for company_id, profile in profiles.items():
+                exists = session.get(CompanyProfileRecord, company_id)
+                if exists is None:
+                    session.add(
+                        CompanyProfileRecord(
+                            company_id=company_id,
+                            data_json=json.dumps(profile, ensure_ascii=False),
+                        )
+                    )
+        logger.info("COMPANY_PROFILES_SEEDED count=%s", len(profiles))
+    except Exception:
+        logger.exception("COMPANY_PROFILES_SEED_FAILED")
+
+
+def _load_all_profiles() -> dict[str, Any]:
+    profiles = _load_profiles_from_db()
+    if profiles:
+        return profiles
+    # DB empty: seed it from the JSON file (if present) and use that this call.
+    file_profiles = _load_profiles_from_file()
+    if file_profiles:
+        _seed_profiles_to_db(file_profiles)
+    return file_profiles
+
+
+def list_company_ids() -> list[str]:
+    return sorted(_load_all_profiles().keys())
+
+
+def save_company(company_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+    """Upsert a company profile into the DB and return the stored profile."""
+    company_id = (company_id or "").strip()
+    if not company_id:
+        raise CompanyProfileError("", "missing id")
+
+    merged = dict(profile)
+    merged["company_id"] = company_id
+
+    from memory_db import CompanyProfileRecord, get_session
+
+    payload = json.dumps(merged, ensure_ascii=False)
+    with get_session() as session:
+        row = session.get(CompanyProfileRecord, company_id)
+        if row is None:
+            session.add(CompanyProfileRecord(company_id=company_id, data_json=payload))
+        else:
+            row.data_json = payload
+    logger.info("COMPANY_PROFILE_SAVED company_id=%s", company_id)
+    return merged
 
 
 def get_company(company_id: str) -> dict[str, Any] | None:
