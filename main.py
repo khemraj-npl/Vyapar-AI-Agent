@@ -12,7 +12,9 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
+import facebook_messenger
 from ai_employee_engine import generate_employee_reply, sanitize_user_text
 from company_manager import CompanyProfileError, get_active_company_id, require_company
 from memory_db import db_healthcheck, init_db
@@ -227,6 +229,11 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("TELEGRAM_DISABLED reason=missing_token")
 
+    if facebook_messenger.facebook_enabled():
+        logger.info("FACEBOOK_MESSENGER_ENABLED graph_version=%s", facebook_messenger.FACEBOOK_GRAPH_VERSION)
+    else:
+        logger.warning("FACEBOOK_MESSENGER_DISABLED reason=missing_page_access_token")
+
     yield
 
     app.state.stop_event.set()
@@ -290,6 +297,32 @@ async def telegram_webhook(
 
     update = await request.json()
     await handle_update(update, request.app.state.http)
+    return {"ok": True}
+
+
+@app.get("/facebook/webhook")
+async def facebook_webhook_verify(request: Request) -> PlainTextResponse:
+    params = request.query_params
+    challenge = facebook_messenger.verify_subscription(
+        params.get("hub.mode"),
+        params.get("hub.verify_token"),
+        params.get("hub.challenge"),
+    )
+    if challenge is None:
+        raise HTTPException(status_code=403, detail="verification failed")
+    return PlainTextResponse(content=challenge)
+
+
+@app.post("/facebook/webhook")
+async def facebook_webhook(request: Request) -> dict[str, bool]:
+    raw_body = await request.body()
+    signature = request.headers.get("x-hub-signature-256")
+    if not facebook_messenger.valid_signature(raw_body, signature):
+        logger.warning("FACEBOOK_WEBHOOK_REJECTED reason=bad_signature")
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    payload = await request.json()
+    await facebook_messenger.handle_webhook_payload(payload, request.app.state.http)
     return {"ok": True}
 
 
