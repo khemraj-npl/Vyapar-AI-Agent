@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Conversation — Vyapar AI{% endblock %}
+{% block content %}
+<a href="/dashboard/conversations" class="text-sm text-indigo-600 hover:text-indigo-800">&larr; Back to conversations</a>
+<h1 class="text-2xl font-semibold text-slate-900 mt-2">{{ customer_name or user_id }}</h1>
+<p class="text-sm text-slate-500 mt-1">Full chat transcript</p>
+
+<div class="mt-6 space-y-3 max-w-3xl">
+  {% for turn in transcript %}
+  <div class="flex {{ 'justify-end' if turn.role == 'assistant' else 'justify-start' }}">
+    <div class="rounded-2xl px-4 py-2 text-sm max-w-lg {{ 'bg-indigo-600 text-white' if turn.role == 'assistant' else 'bg-white text-slate-800 shadow' }}">
+      <div class="text-[10px] uppercase tracking-wide mb-1 {{ 'text-indigo-200' if turn.role == 'assistant' else 'text-slate-400' }}">{{ 'AI Employee' if turn.role == 'assistant' else 'Customer' }}</div>
+      {{ turn.content }}
+    </div>
+  </div>
+  {% else %}
+  <div class="text-center text-slate-400 py-6">No messages in this conversation.</div>
+  {% endfor %}
+</div>
+{% endblock %}

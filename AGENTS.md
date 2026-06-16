@@ -33,7 +33,11 @@ See `README.md` / `README_DEPLOY.md` for the product overview and Render deploy 
 
 ### Business owner dashboard
 - Server-rendered (Jinja2 + Tailwind CDN) multi-tenant dashboard mounted at `/dashboard`
-  (`dashboard.py` + `templates/`). Pages: login, overview, products (CRUD), leads.
+  (`dashboard.py` + `templates/`). Pages: login, overview, conversations (inbox + transcript),
+  leads, products (CRUD), business profile (company info/contact/policies/rules editor).
+- Conversations are scoped to a company via the `conversation_state` table (a `ChatTurn` row has
+  no `company_id`, so the inbox lists users that have a `ConversationState` for the owner's
+  `company_id`, then shows that user's full `ChatTurn` transcript).
 - Create/update an owner account: `python admin_create_owner.py <email> <password> <company_id>`.
   Owners only see data for their own `company_id`. Session is a signed cookie
   (`auth.py`); set `DASHBOARD_SECRET_KEY` in production.

@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 import auth
 from company_manager import CompanyProfileError, get_company, save_company
-from memory_db import Lead, OwnerUser, get_session
+from memory_db import ChatTurn, ConversationState, Lead, OwnerUser, get_session
 
 logger = logging.getLogger("vyapar.dashboard")
 
@@ -213,6 +213,174 @@ async def products_edit(
         company["products"] = products
         save_company(owner.company_id, company)
     return RedirectResponse(url="/dashboard/products", status_code=303)
+
+
+def _parse_policies(raw: str) -> dict[str, str]:
+    policies: dict[str, str] = {}
+    for line in (raw or "").splitlines():
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key = key.strip()
+        value = value.strip()
+        if key and value:
+            policies[key] = value
+    return policies
+
+
+def _parse_rules(raw: str) -> list[str]:
+    return [line.strip() for line in (raw or "").splitlines() if line.strip()]
+
+
+@router.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+
+    try:
+        company = get_company(owner.company_id) or {}
+    except CompanyProfileError:
+        company = {}
+    contact = company.get("contact") or {}
+    policies = company.get("policies") or {}
+    rules = company.get("rules") or []
+    policies_text = "\n".join(f"{k}: {v}" for k, v in policies.items()) if isinstance(policies, dict) else ""
+    rules_text = "\n".join(str(r) for r in rules) if isinstance(rules, list) else ""
+
+    return templates.TemplateResponse(
+        request,
+        "profile.html",
+        {
+            "owner": owner,
+            "company_id": owner.company_id,
+            "company": company,
+            "contact": contact,
+            "policies_text": policies_text,
+            "rules_text": rules_text,
+            "active": "profile",
+            "saved": request.query_params.get("saved") == "1",
+        },
+    )
+
+
+@router.post("/profile")
+async def profile_save(
+    request: Request,
+    company_name: str = Form(""),
+    business_type: str = Form(""),
+    industry: str = Form(""),
+    location: str = Form(""),
+    currency: str = Form(""),
+    support_hours: str = Form(""),
+    phone: str = Form(""),
+    toll_free: str = Form(""),
+    email: str = Form(""),
+    policies: str = Form(""),
+    rules: str = Form(""),
+) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+
+    company = get_company(owner.company_id) or {}
+    company.update(
+        {
+            "company_name": company_name.strip(),
+            "business_type": business_type.strip(),
+            "industry": industry.strip() or "general",
+            "location": location.strip(),
+            "currency": currency.strip() or "NPR",
+            "support_hours": support_hours.strip(),
+            "contact": {
+                "phone": phone.strip(),
+                "toll_free": toll_free.strip(),
+                "email": email.strip(),
+            },
+            "policies": _parse_policies(policies),
+            "rules": _parse_rules(rules),
+        }
+    )
+    save_company(owner.company_id, company)
+    return RedirectResponse(url="/dashboard/profile?saved=1", status_code=303)
+
+
+@router.get("/conversations", response_class=HTMLResponse)
+async def conversations_page(request: Request) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+
+    with get_session() as session:
+        rows = (
+            session.query(ConversationState)
+            .filter(ConversationState.company_id == owner.company_id)
+            .order_by(ConversationState.updated_at.desc())
+            .all()
+        )
+        conversations = [
+            {
+                "user_id": r.user_id,
+                "name": r.name,
+                "language": r.language,
+                "lead_stage": r.lead_stage,
+                "turn_count": r.turn_count,
+                "escalation_requested": r.escalation_requested,
+                "last_assistant_reply": r.last_assistant_reply,
+                "updated_at": r.updated_at,
+            }
+            for r in rows
+        ]
+
+    return templates.TemplateResponse(
+        request,
+        "conversations.html",
+        {"owner": owner, "company_id": owner.company_id, "conversations": conversations, "active": "conversations"},
+    )
+
+
+@router.get("/conversations/{user_id}", response_class=HTMLResponse)
+async def conversation_detail(request: Request, user_id: str) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+
+    with get_session() as session:
+        # Tenant isolation: only show transcripts for a user that has talked to
+        # THIS company (a ConversationState row exists for user_id + company_id).
+        state = (
+            session.query(ConversationState)
+            .filter(
+                ConversationState.company_id == owner.company_id,
+                ConversationState.user_id == user_id,
+            )
+            .first()
+        )
+        if state is None:
+            return RedirectResponse(url="/dashboard/conversations", status_code=303)
+
+        turns = (
+            session.query(ChatTurn)
+            .filter(ChatTurn.user_id == user_id)
+            .order_by(ChatTurn.created_at.asc())
+            .all()
+        )
+        transcript = [{"role": t.role, "content": t.content, "created_at": t.created_at} for t in turns]
+        customer_name = state.name
+
+    return templates.TemplateResponse(
+        request,
+        "conversation_detail.html",
+        {
+            "owner": owner,
+            "company_id": owner.company_id,
+            "user_id": user_id,
+            "customer_name": customer_name,
+            "transcript": transcript,
+            "active": "conversations",
+        },
+    )
 
 
 @router.get("/leads", response_class=HTMLResponse)
