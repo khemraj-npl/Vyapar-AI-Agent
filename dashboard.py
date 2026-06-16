@@ -4,8 +4,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import csv
+import io
+
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 import auth
@@ -415,4 +418,36 @@ async def leads_page(request: Request) -> Any:
         request,
         "leads.html",
         {"owner": owner, "company_id": owner.company_id, "leads": leads, "active": "leads"},
+    )
+
+
+@router.get("/leads/export.csv")
+async def leads_export(request: Request) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+
+    fields = [
+        "id", "stage", "lead_score", "customer_name", "location",
+        "requested_speed", "phone", "contact_method", "contact_value",
+        "matched_product", "buying_intent", "created_at", "updated_at",
+    ]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    with get_session() as session:
+        rows = (
+            session.query(Lead)
+            .filter(Lead.company_id == owner.company_id)
+            .order_by(Lead.updated_at.desc())
+            .all()
+        )
+        for r in rows:
+            writer.writerow({field: getattr(r, field, "") for field in fields})
+    buffer.seek(0)
+    filename = f"leads_{owner.company_id}.csv"
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
