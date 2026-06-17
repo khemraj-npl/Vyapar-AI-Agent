@@ -17,6 +17,10 @@
     <div class="text-xs uppercase tracking-wide text-slate-400">Hot leads</div>
     <div class="text-3xl font-semibold text-rose-600 mt-2">{{ stage_counts.hot }}</div>
   </div>
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-400">Outstanding</div>
+    <div class="text-3xl font-semibold text-amber-600 mt-2">{{ currency }} {{ "{:,}".format(outstanding) }}</div>
+  </div>
 </div>
 
 <h2 class="text-lg font-semibold text-slate-900 mt-8 mb-3">Lead funnel</h2>

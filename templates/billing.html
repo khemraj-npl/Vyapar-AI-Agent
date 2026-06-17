@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Billing — Vyapar AI{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-semibold text-slate-900">Billing &amp; Invoices</h1>
+    <p class="text-sm text-slate-500 mt-1">Bill customers and track payment status.</p>
+  </div>
+  <a href="/dashboard/billing/export.csv" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded px-4 py-2">Export CSV</a>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-6">
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-400">Total billed</div>
+    <div class="text-2xl font-semibold text-slate-900 mt-2">{{ currency }} {{ "{:,}".format(total_billed) }}</div>
+  </div>
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-400">Paid</div>
+    <div class="text-2xl font-semibold text-emerald-600 mt-2">{{ currency }} {{ "{:,}".format(total_paid) }}</div>
+  </div>
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-400">Outstanding</div>
+    <div class="text-2xl font-semibold text-amber-600 mt-2">{{ currency }} {{ "{:,}".format(outstanding) }}</div>
+  </div>
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-400">Overdue</div>
+    <div class="text-2xl font-semibold text-rose-600 mt-2">{{ overdue_count }}</div>
+  </div>
+</div>
+
+<div class="bg-white rounded-xl shadow mt-6 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-slate-500 text-left">
+      <tr>
+        <th class="px-4 py-3 font-medium">Customer</th>
+        <th class="px-4 py-3 font-medium">Description</th>
+        <th class="px-4 py-3 font-medium">Amount</th>
+        <th class="px-4 py-3 font-medium">Due</th>
+        <th class="px-4 py-3 font-medium">Status</th>
+        <th class="px-4 py-3 font-medium text-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {% for inv in invoices %}
+      <tr>
+        <td class="px-4 py-2">{{ inv.customer_name or '—' }}<div class="text-xs text-slate-400">{{ inv.customer_phone or '' }}</div></td>
+        <td class="px-4 py-2">{{ inv.description or '—' }}</td>
+        <td class="px-4 py-2 font-medium">{{ inv.currency }} {{ "{:,}".format(inv.amount) }}</td>
+        <td class="px-4 py-2">{{ inv.due_date or '—' }}</td>
+        <td class="px-4 py-2">
+          {% if inv.status == 'paid' %}
+          <span class="px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">paid</span>
+          {% elif inv.is_overdue %}
+          <span class="px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-700">overdue</span>
+          {% else %}
+          <span class="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">unpaid</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-2 text-right whitespace-nowrap">
+          {% if inv.status != 'paid' %}
+          <form method="post" action="/dashboard/billing/{{ inv.id }}/paid" class="inline">
+            <button type="submit" class="text-emerald-600 hover:text-emerald-800 mr-3">Mark paid</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/dashboard/billing/{{ inv.id }}/delete" class="inline">
+            <button type="submit" class="text-rose-600 hover:text-rose-800" onclick="return confirm('Delete this invoice?')">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="px-4 py-6 text-center text-slate-400">No invoices yet. Create one below.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="text-lg font-semibold text-slate-900 mt-8 mb-3">Create invoice</h2>
+<div class="bg-white rounded-xl shadow p-5">
+  <form method="post" action="/dashboard/billing/add" class="grid grid-cols-1 sm:grid-cols-6 gap-3 items-end">
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Customer</label>
+      <input name="customer_name" value="{{ prefill.customer_name }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Phone</label>
+      <input name="customer_phone" value="{{ prefill.customer_phone }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div class="sm:col-span-2">
+      <label class="block text-xs text-slate-500 mb-1">Description</label>
+      <input name="description" value="{{ prefill.description }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Amount ({{ currency }})</label>
+      <input name="amount" value="{{ prefill.amount }}" required class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Due date</label>
+      <input name="due_date" type="date" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div class="sm:col-span-6">
+      <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded px-5 py-2">Create invoice</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

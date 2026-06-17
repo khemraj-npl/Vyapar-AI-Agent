@@ -19,6 +19,7 @@
         <th class="px-4 py-3 font-medium">Interest</th>
         <th class="px-4 py-3 font-medium">Stage</th>
         <th class="px-4 py-3 font-medium">Score</th>
+        <th class="px-4 py-3 font-medium text-right"></th>
       </tr>
     </thead>
     <tbody class="divide-y divide-slate-100">
@@ -33,9 +34,12 @@
           <span class="px-2 py-0.5 rounded text-xs font-medium {{ colors.get(lead.stage, 'bg-slate-100 text-slate-700') }}">{{ lead.stage }}</span>
         </td>
         <td class="px-4 py-2 font-medium">{{ lead.lead_score }}</td>
+        <td class="px-4 py-2 text-right">
+          <a href="/dashboard/billing?customer_name={{ (lead.customer_name or '') | urlencode }}&customer_phone={{ (lead.phone or '') | urlencode }}&description={{ (lead.matched_product or '') | urlencode }}" class="text-indigo-600 hover:text-indigo-800">Bill</a>
+        </td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="px-4 py-6 text-center text-slate-400">No leads captured yet.</td></tr>
+      <tr><td colspan="7" class="px-4 py-6 text-center text-slate-400">No leads captured yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>

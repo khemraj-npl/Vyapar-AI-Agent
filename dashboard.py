@@ -6,6 +6,7 @@ from typing import Any
 
 import csv
 import io
+from datetime import date, datetime
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -13,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 import auth
 from company_manager import CompanyProfileError, get_company, save_company
-from memory_db import ChatTurn, ConversationState, Lead, OwnerUser, get_session
+from memory_db import ChatTurn, ConversationState, Invoice, Lead, OwnerUser, get_session
 
 logger = logging.getLogger("vyapar.dashboard")
 
@@ -99,11 +100,15 @@ async def overview(request: Request) -> Any:
     products = company.get("products") or []
     stage_counts = {"new": 0, "interested": 0, "qualified": 0, "hot": 0}
     total_leads = 0
+    outstanding = 0
+    currency = company.get("currency", "NPR")
     with get_session() as session:
         leads = session.query(Lead).filter(Lead.company_id == company_id).all()
         total_leads = len(leads)
         for lead in leads:
             stage_counts[lead.stage] = stage_counts.get(lead.stage, 0) + 1
+        invoices = session.query(Invoice).filter(Invoice.company_id == company_id).all()
+        outstanding = sum(i.amount for i in invoices if i.status == "unpaid")
 
     return templates.TemplateResponse(
         request,
@@ -115,6 +120,8 @@ async def overview(request: Request) -> Any:
             "product_count": len(products),
             "total_leads": total_leads,
             "stage_counts": stage_counts,
+            "outstanding": outstanding,
+            "currency": currency,
             "active": "overview",
         },
     )
@@ -450,4 +457,179 @@ async def leads_export(request: Request) -> Any:
         iter([buffer.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _parse_amount(raw: str) -> int:
+    raw = (raw or "").strip().replace(",", "")
+    try:
+        return max(0, int(float(raw)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_due_date(raw: str) -> date | None:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _invoice_view(inv: Invoice) -> dict[str, Any]:
+    is_overdue = bool(
+        inv.status == "unpaid" and inv.due_date is not None and inv.due_date < date.today()
+    )
+    return {
+        "id": inv.id,
+        "customer_name": inv.customer_name,
+        "customer_phone": inv.customer_phone,
+        "description": inv.description,
+        "amount": inv.amount,
+        "currency": inv.currency,
+        "status": inv.status,
+        "is_overdue": is_overdue,
+        "due_date": inv.due_date,
+        "paid_at": inv.paid_at,
+        "created_at": inv.created_at,
+    }
+
+
+@router.get("/billing", response_class=HTMLResponse)
+async def billing_page(request: Request) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+
+    try:
+        company = get_company(owner.company_id) or {}
+    except CompanyProfileError:
+        company = {}
+    currency = company.get("currency", "NPR")
+
+    with get_session() as session:
+        rows = (
+            session.query(Invoice)
+            .filter(Invoice.company_id == owner.company_id)
+            .order_by(Invoice.created_at.desc())
+            .all()
+        )
+        invoices = [_invoice_view(r) for r in rows]
+
+    total_billed = sum(i["amount"] for i in invoices)
+    total_paid = sum(i["amount"] for i in invoices if i["status"] == "paid")
+    outstanding = total_billed - total_paid
+    overdue_count = sum(1 for i in invoices if i["is_overdue"])
+
+    prefill = {
+        "customer_name": request.query_params.get("customer_name", ""),
+        "customer_phone": request.query_params.get("customer_phone", ""),
+        "description": request.query_params.get("description", ""),
+        "amount": request.query_params.get("amount", ""),
+    }
+
+    return templates.TemplateResponse(
+        request,
+        "billing.html",
+        {
+            "owner": owner,
+            "company_id": owner.company_id,
+            "invoices": invoices,
+            "currency": currency,
+            "total_billed": total_billed,
+            "total_paid": total_paid,
+            "outstanding": outstanding,
+            "overdue_count": overdue_count,
+            "prefill": prefill,
+            "active": "billing",
+        },
+    )
+
+
+@router.post("/billing/add")
+async def billing_add(
+    request: Request,
+    customer_name: str = Form(""),
+    customer_phone: str = Form(""),
+    description: str = Form(""),
+    amount: str = Form(""),
+    due_date: str = Form(""),
+) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+
+    try:
+        company = get_company(owner.company_id) or {}
+    except CompanyProfileError:
+        company = {}
+
+    with get_session() as session:
+        session.add(
+            Invoice(
+                company_id=owner.company_id,
+                customer_name=customer_name.strip() or None,
+                customer_phone=customer_phone.strip() or None,
+                description=description.strip() or None,
+                amount=_parse_amount(amount),
+                currency=company.get("currency", "NPR"),
+                status="unpaid",
+                due_date=_parse_due_date(due_date),
+            )
+        )
+    logger.info("INVOICE_CREATED company_id=%s customer=%s", owner.company_id, customer_name)
+    return RedirectResponse(url="/dashboard/billing", status_code=303)
+
+
+@router.post("/billing/{invoice_id}/paid")
+async def billing_mark_paid(request: Request, invoice_id: int) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+    with get_session() as session:
+        inv = session.get(Invoice, invoice_id)
+        if inv is not None and inv.company_id == owner.company_id:
+            inv.status = "paid"
+            inv.paid_at = datetime.utcnow()
+    return RedirectResponse(url="/dashboard/billing", status_code=303)
+
+
+@router.post("/billing/{invoice_id}/delete")
+async def billing_delete(request: Request, invoice_id: int) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+    with get_session() as session:
+        inv = session.get(Invoice, invoice_id)
+        if inv is not None and inv.company_id == owner.company_id:
+            session.delete(inv)
+    return RedirectResponse(url="/dashboard/billing", status_code=303)
+
+
+@router.get("/billing/export.csv")
+async def billing_export(request: Request) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+
+    fields = ["id", "customer_name", "customer_phone", "description", "amount", "currency", "status", "due_date", "paid_at", "created_at"]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    with get_session() as session:
+        rows = (
+            session.query(Invoice)
+            .filter(Invoice.company_id == owner.company_id)
+            .order_by(Invoice.created_at.desc())
+            .all()
+        )
+        for r in rows:
+            writer.writerow({field: getattr(r, field, "") for field in fields})
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="invoices_{owner.company_id}.csv"'},
     )
