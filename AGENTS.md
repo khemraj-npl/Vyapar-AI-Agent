@@ -22,6 +22,17 @@ See `README.md` / `README_DEPLOY.md` for the product overview and Render deploy 
   also calls `init_db()` on startup).
 - Health check: `GET /healthz`; service info: `GET /`.
 
+### Channels (transport adapters)
+The AI "brain" is `ai_employee_engine.generate_employee_reply(user_id, text, company_id)` and is
+platform-agnostic. Each chat platform is a thin adapter in its own module that calls the engine:
+- **Telegram**: lives in `main.py` (webhook `/telegram/webhook` + polling). Needs `TELEGRAM_BOT_TOKEN`.
+- **Facebook Messenger**: lives in `facebook_messenger.py`, routes `GET/POST /facebook/webhook` in
+  `main.py`. `GET` is the verify handshake (`hub.verify_token` must equal `FACEBOOK_VERIFY_TOKEN`);
+  `POST` validates `X-Hub-Signature-256` against `FACEBOOK_APP_SECRET`, then replies via the Graph
+  API. Messenger user ids are namespaced as `fb:<sender_id>` so memory doesn't collide across
+  channels. The POST handler always returns 200 (errors are logged) so Facebook doesn't disable the
+  webhook on transient failures.
+
 ### Secrets / external services (non-obvious)
 - `OPENAI_API_KEY` is required only for LLM-generated replies. Without it the server still
   starts and the deterministic paths (memory write/recall, greeting, escalation, language
@@ -30,6 +41,11 @@ See `README.md` / `README_DEPLOY.md` for the product overview and Render deploy 
   server runs fine but logs `TELEGRAM_DISABLED` and cannot send/receive Telegram messages.
   You can exercise the core engine directly via `generate_employee_reply(user_id, text)`
   without any Telegram token.
+- Facebook Messenger needs `FACEBOOK_PAGE_ACCESS_TOKEN` (send), `FACEBOOK_VERIFY_TOKEN` (webhook
+  verify), and `FACEBOOK_APP_SECRET` (signature check); optional `FACEBOOK_GRAPH_VERSION`
+  (default `v21.0`). Without the page token the server runs but logs `FACEBOOK_MESSENGER_DISABLED`.
+  Facebook must reach the webhook over public HTTPS, so live testing needs a public tunnel
+  (e.g. cloudflared/ngrok) or a deployed URL, plus the page subscribed to the app's `messages` event.
 
 ### Business owner dashboard
 - Server-rendered (Jinja2 + Tailwind CDN) multi-tenant dashboard mounted at `/dashboard`
