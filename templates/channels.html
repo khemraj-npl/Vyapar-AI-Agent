@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Channels — Vyapar AI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold text-slate-900">Channels</h1>
+<p class="text-sm text-slate-500 mt-1">Connect your AI employee to the places your customers chat.</p>
+
+<div class="bg-white rounded-xl shadow p-6 mt-6 max-w-3xl">
+  <div class="flex items-center justify-between">
+    <h2 class="text-lg font-semibold text-slate-900">Website chat widget</h2>
+    <span class="px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">Active</span>
+  </div>
+  <p class="text-sm text-slate-500 mt-1">Paste this snippet before <code>&lt;/body&gt;</code> on your website. A chat bubble appears bottom-right.</p>
+
+  <label class="block text-xs text-slate-500 mt-4 mb-1">Embed snippet</label>
+  <div class="flex gap-2">
+    <input id="embed" readonly value='{{ embed_snippet }}' class="flex-1 border border-slate-300 rounded px-3 py-2 text-xs font-mono bg-slate-50" />
+    <button onclick="copyVal('embed', this)" class="bg-slate-800 hover:bg-slate-900 text-white text-sm rounded px-3">Copy</button>
+  </div>
+
+  <label class="block text-xs text-slate-500 mt-4 mb-1">Or share this direct chat link</label>
+  <div class="flex gap-2">
+    <input id="link" readonly value='{{ chat_url }}' class="flex-1 border border-slate-300 rounded px-3 py-2 text-xs font-mono bg-slate-50" />
+    <button onclick="copyVal('link', this)" class="bg-slate-800 hover:bg-slate-900 text-white text-sm rounded px-3">Copy</button>
+    <a href="{{ chat_url }}" target="_blank" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded px-3 py-2">Open</a>
+  </div>
+  <p class="text-xs text-slate-400 mt-3">Widget key: <code>{{ widget_key }}</code></p>
+</div>
+
+<div class="bg-white rounded-xl shadow p-6 mt-6 max-w-3xl opacity-70">
+  <div class="flex items-center justify-between">
+    <h2 class="text-lg font-semibold text-slate-900">Facebook Messenger · WhatsApp · Instagram · Telegram</h2>
+    <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-500">Coming soon</span>
+  </div>
+  <p class="text-sm text-slate-500 mt-1">Connect your social accounts so the same AI employee answers there too.</p>
+</div>
+
+<script>
+function copyVal(id, btn) {
+  var el = document.getElementById(id);
+  navigator.clipboard.writeText(el.value).then(function() {
+    var t = btn.textContent; btn.textContent = "Copied!";
+    setTimeout(function(){ btn.textContent = t; }, 1500);
+  });
+}
+</script>
+{% endblock %}
