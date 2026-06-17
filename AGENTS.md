@@ -47,6 +47,18 @@ platform-agnostic. Each chat platform is a thin adapter in its own module that c
   Facebook must reach the webhook over public HTTPS, so live testing needs a public tunnel
   (e.g. cloudflared/ngrok) or a deployed URL, plus the page subscribed to the app's `messages` event.
 
+### Multi-tenant onboarding & web widget
+- Self-service signup at `/dashboard/signup` creates an isolated tenant (a `company_profile` row
+  with a generated `company_id` + public `widget_key`) and an `owner_user`, then auto-logs in.
+  No CLI/JSON needed for new tenants (`admin_create_owner.py` still works for manual creation).
+- **Web chat widget** (`web_widget.py`, public, no auth): `GET /widget/{key}` (hosted chat page),
+  `GET /widget/{key}.js` (embeddable loader that injects a floating button + same-origin iframe),
+  `POST /widget/{key}/message` (chat API). The `widget_key` maps to a tenant via
+  `company_manager.get_company_by_widget_key()` — this is the per-tenant channel-routing pattern
+  future channels (FB/WhatsApp) should follow. Web users are namespaced `web:{key}:{session_id}`.
+- The "Channels" dashboard page shows the copyable embed snippet + chat link. Embed URLs are built
+  from `request.base_url`, so behind a tunnel/proxy they reflect the public host.
+
 ### Business owner dashboard
 - Server-rendered (Jinja2 + Tailwind CDN) multi-tenant dashboard mounted at `/dashboard`
   (`dashboard.py` + `templates/`). Pages: login, overview, conversations (inbox + transcript),
