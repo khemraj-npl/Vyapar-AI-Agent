@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Phase 2 Sales Mode Bug Fix Report | Vyapar AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page{size:A4;margin:12mm 11mm}
+body{font-family:Inter,"Noto Sans Devanagari",sans-serif;font-size:9pt;line-height:1.45;color:#111;max-width:210mm;margin:0 auto;padding:14px 16px 28px}
+h1{font-size:17pt;color:#0f3460;border-bottom:3px solid #e94560;padding-bottom:5px;margin:0}
+h2{font-size:11.5pt;color:#16213e;margin:16px 0 7px;border-left:4px solid #e94560;padding-left:8px;page-break-after:avoid}
+h3{font-size:9.5pt;color:#0f3460;margin:10px 0 4px}
+.meta{background:#f0f4f8;padding:10px 12px;border-radius:5px;font-size:8.5pt;margin:10px 0}
+.badge-fix{background:#16a34a;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-bug{background:#dc2626;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-info{background:#2563eb;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+table{width:100%;border-collapse:collapse;margin:7px 0;font-size:8pt}
+th,td{border:1px solid #cbd5e1;padding:4px 7px;text-align:left;vertical-align:top}
+th{background:#0f3460;color:#fff}
+tr:nth-child(even){background:#f8fafc}
+.pass{color:#16a34a;font-weight:700}
+.fail{color:#dc2626;font-weight:700}
+pre{font-family:"JetBrains Mono",Consolas,monospace;font-size:7pt;background:#f1f5f9;padding:8px 10px;border-radius:4px;border:1px solid #e2e8f0;white-space:pre-wrap}
+.diagram{font-family:"JetBrains Mono",monospace;font-size:7pt;background:#f8fafc;border:1px solid #e2e8f0;padding:9px;white-space:pre-wrap;line-height:1.3}
+.rule{background:#fef2f2;border-left:4px solid #dc2626;padding:8px 11px;margin:8px 0;font-size:8.5pt}
+.fix{background:#ecfdf5;border-left:4px solid #16a34a;padding:8px 11px;margin:8px 0;font-size:8.5pt}
+.page-break{page-break-before:always}
+ul,ol{margin:4px 0;padding-left:18px}li{margin:2px 0}
+.footer{margin-top:18px;padding-top:8px;border-top:1px solid #cbd5e1;font-size:7.5pt;color:#64748b;text-align:center}
+code{font-family:"JetBrains Mono",Consolas,monospace;font-size:7.5pt;background:#f1f5f9;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+
+<h1>Phase 2 Production Bug Fix Report</h1>
+<p><strong>Sales Mode Activation — Vyapar AI Employee Platform</strong></p>
+
+<div class="meta">
+<p><strong>Status:</strong> <span class="badge-fix">FIXED</span> &nbsp; <span class="badge-bug">PRODUCTION BUG</span></p>
+<p><strong>Date:</strong> June 2, 2026</p>
+<p><strong>Environment:</strong> Telegram + Render (<code>company_id=hons</code>, <code>user_id=2071979418</code>)</p>
+</div>
+
+<h2>1. Problem Summary</h2>
+<p>Phase 2 lead detection and persistence worked correctly in production, but <strong>sales mode never activated</strong>. The bot replied like a FAQ/general assistant instead of a sales employee.</p>
+
+<table>
+<tr><th>Component</th><th>Production behavior</th><th>Expected</th></tr>
+<tr><td>Lead detection</td><td class="pass">Working — <code>LEAD_SIGNALS_DETECTED</code></td><td>Working</td></tr>
+<tr><td>Lead upsert</td><td class="pass">Working — score 20→50, stage <code>interested</code></td><td>Working</td></tr>
+<tr><td>Memory</td><td class="pass">Working — name recall confirmed</td><td>Working</td></tr>
+<tr><td>Sales mode</td><td class="fail">Always <code>sales_mode=False</code></td><td><code>sales_mode=True</code> when qualifying</td></tr>
+<tr><td><code>SALES_MODE_ACTIVE</code> log</td><td class="fail">No matching logs</td><td>Log on every sales reply</td></tr>
+</table>
+
+<h3>User conversation examples (all failed sales mode)</h3>
+<ul>
+<li><code>Kolhabi ma HONS ko net chha?</code></li>
+<li><code>Banepa ma internet jodnu chha</code></li>
+<li><code>Malai 500 Mbps ko net chahiyo</code></li>
+<li><code>Mero phone number dinchhu</code></li>
+<li><code>Chhito install garna parcha</code></li>
+</ul>
+
+<h2>2. Root Cause</h2>
+
+<div class="rule">
+<strong>Primary:</strong> <code>_resolve_sales_mode()</code> in <code>ai_employee_engine.py</code> was too narrow. It ignored lead stage, lead score, and active lead context.
+</div>
+
+<p>Production logs showed the mismatch clearly:</p>
+<table>
+<tr><th>Log field</th><th>Production value</th><th>Why sales_mode stayed False</th></tr>
+<tr><td><code>buying</code></td><td><code>False</code></td><td>Nepali <strong>chha</strong> not matched (patterns used <code>cha</code> only)</td></tr>
+<tr><td><code>stage</code></td><td><code>interested</code></td><td><strong>Not used</strong> in sales_mode logic</td></tr>
+<tr><td><code>score</code></td><td>40–50</td><td><strong>Not used</strong> in sales_mode logic</td></tr>
+<tr><td><code>detected_intent</code></td><td>often <code>general</code></td><td>Blocked the intent-based path</td></tr>
+<tr><td><code>SALES_MODE_ACTIVE</code></td><td>never logged</td><td>Only logged inside <code>sales_mode and exact_product is None</code></td></tr>
+</table>
+
+<p>Old logic only returned <code>True</code> when:</p>
+<ol>
+<li><code>bundle.buying_intent == True</code>, OR</li>
+<li><code>detected_intent</code> ∈ {buying_intent, sales, pricing, coverage_inquiry} AND (speed mismatch OR coverage)</li>
+</ol>
+
+<p>So <code>should_process_lead()</code> saved leads, but prompts still used full catalog FAQ mode.</p>
+
+<h3>Secondary: Nepali pattern gaps</h3>
+<table>
+<tr><th>User message</th><th>Pattern issue</th></tr>
+<tr><td><code>internet jodnu chha</code></td><td>Pattern expected <code>cha</code>, not <code>chha</code></td></tr>
+<tr><td><code>install garna parcha</code></td><td>Not in buying intent patterns</td></tr>
+<tr><td><code>number dinchhu</code></td><td>Pattern was <code>dinchu</code> only</td></tr>
+<tr><td><code>Kolhabi ma HONS ko net chha?</code></td><td>Not detected as coverage inquiry</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>3. Fix Applied</h2>
+
+<h3>3.1 ai_employee_engine.py — sales mode logic</h3>
+<p><code>_resolve_sales_mode()</code> now also activates when:</p>
+<ul>
+<li><code>lead.stage</code> is <code>interested</code>, <code>qualified</code>, or <code>hot</code></li>
+<li><code>lead_score &gt;= 40</code> (max of persisted lead + current bundle)</li>
+<li><code>coverage_check_needed</code></li>
+<li><code>should_process_lead</code> + unavailable speed or urgency signal</li>
+</ul>
+
+<p>Returns <code>(bool, reason)</code> and <strong>always</strong> logs <code>SALES_MODE_ACTIVE</code> when true:</p>
+<pre>SALES_MODE_ACTIVE user_id=... company_id=hons reason=lead_stage=interested stage=interested score=50</pre>
+
+<h3>3.2 lead_extractor.py — pattern fixes</h3>
+<ul>
+<li>Buying intent: <code>chh?[au]</code> variants (chha/chu/cha)</li>
+<li>Buying intent: <code>install garna parcha</code></li>
+<li>Contact: <code>number dinchhu</code></li>
+<li>Coverage: <code>ko net chha</code>, <code>net chha?</code>, location + <code>?</code> questions</li>
+</ul>
+
+<h3>3.3 intent_engine.py — aligned patterns</h3>
+<p>Buying and coverage intent detection updated to match Nepali Telegram usage.</p>
+
+<h3>3.4 tests/test_sales_mode.py — new tests</h3>
+<ul>
+<li><code>chha</code> variant buying intent</li>
+<li><code>install parcha</code> buying intent</li>
+<li>Interested lead stage activates sales mode</li>
+<li>Score &gt;= 40 activates sales mode</li>
+<li>Coverage question activates sales mode</li>
+</ul>
+
+<h2>4. Files Changed</h2>
+<table>
+<tr><th>File</th><th>Change</th></tr>
+<tr><td><code>ai_employee_engine.py</code></td><td>Expand <code>_resolve_sales_mode</code>, add reason logging</td></tr>
+<tr><td><code>lead_extractor.py</code></td><td>Nepali chha/coverage/contact patterns</td></tr>
+<tr><td><code>intent_engine.py</code></td><td>Aligned buying/coverage patterns</td></tr>
+<tr><td><code>tests/test_sales_mode.py</code></td><td>New unit tests</td></tr>
+</table>
+
+<h2>5. Testing Checklist</h2>
+<table>
+<tr><th>#</th><th>Telegram message</th><th>Expected after fix</th></tr>
+<tr><td>1</td><td><code>Banepa ma internet jodnu chha</code></td><td><code>buying=True</code>, <code>SALES_MODE_ACTIVE reason=buying_intent</code></td></tr>
+<tr><td>2</td><td><code>Malai 500 Mbps ko net chahiyo</code></td><td><code>sales_mode=True</code>, single alternative (no full catalog)</td></tr>
+<tr><td>3</td><td><code>Kolhabi ma HONS ko net chha?</code></td><td>Coverage-aware sales reply, asks for contact</td></tr>
+<tr><td>4</td><td><code>Mero phone number dinchhu</code></td><td>Contact signal; sales mode if lead already interested</td></tr>
+<tr><td>5</td><td><code>Chhito install garna parcha</code></td><td><code>buying=True</code>, urgency high, sales mode</td></tr>
+<tr><td>6</td><td><code>Support hours kati ho?</code></td><td>No lead, no sales mode</td></tr>
+<tr><td>7</td><td><code>Mero naam ke ho?</code></td><td>Direct memory answer, no sales mode</td></tr>
+</table>
+
+<p>Run locally before deploy:</p>
+<pre>python -m unittest tests.test_sales_mode tests.test_lead_phase2 -v</pre>
+
+<h2>6. Expected Logs After Fix</h2>
+<pre>LEAD_SIGNALS_DETECTED user_id=2071979418 company_id=hons buying=True score=50 stage=interested signals={...}
+LEAD_UPSERTED user_id=2071979418 company_id=hons lead_id=1 stage=interested score=50
+SALES_MODE_ACTIVE user_id=2071979418 company_id=hons reason=lead_stage=interested stage=interested score=50
+EMPLOYEE_REPLY_GENERATED user_id=2071979418 company_id=hons sales_mode=True</pre>
+
+<h3>Possible SALES_MODE_ACTIVE reason values</h3>
+<table>
+<tr><th>reason</th><th>Trigger</th></tr>
+<tr><td><code>buying_intent</code></td><td>Explicit buying language detected</td></tr>
+<tr><td><code>lead_stage=interested|qualified|hot</code></td><td>Active lead in qualification stage</td></tr>
+<tr><td><code>lead_score=40</code> (or higher)</td><td>Score threshold reached</td></tr>
+<tr><td><code>coverage_check_needed</code></td><td>Area availability check required</td></tr>
+<tr><td><code>no_exact_product_match</code></td><td>Requested speed not in catalog</td></tr>
+<tr><td><code>unavailable_speed</code></td><td>Speed signal + no exact match</td></tr>
+<tr><td><code>urgency_signal</code></td><td>High/medium urgency detected</td></tr>
+</table>
+
+<h2>7. Deploy</h2>
+<div class="fix">
+Deploy these files together on Render (atomic deploy):
+<ul>
+<li><code>ai_employee_engine.py</code></li>
+<li><code>lead_extractor.py</code></li>
+<li><code>intent_engine.py</code></li>
+</ul>
+No new environment variables required. Restart service and re-run Telegram smoke tests above.
+</div>
+
+<div class="footer">
+Vyapar AI Employee Platform — Phase 2 Sales Mode Bug Fix Report — June 2, 2026
+</div>
+
+</body>
+</html>

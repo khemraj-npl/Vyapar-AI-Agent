@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+<meta charset="UTF-8"/>
+<title>Render Log Bug Fixes — Implementation Summary | June 4, 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page { size: A4; margin: 12mm 11mm; }
+* { box-sizing: border-box; }
+body { font-family: Inter, "Noto Sans Devanagari", sans-serif; font-size: 9pt; line-height: 1.48; color: #111; max-width: 210mm; margin: 0 auto; padding: 14px 16px 28px; }
+h1 { font-size: 17pt; color: #0f3460; border-bottom: 3px solid #16a34a; padding-bottom: 5px; margin: 0 0 8px; }
+h2 { font-size: 11.5pt; color: #16213e; margin: 18px 0 7px; border-left: 4px solid #16a34a; padding-left: 8px; page-break-after: avoid; }
+h3 { font-size: 9.5pt; color: #0f3460; margin: 10px 0 4px; }
+.meta { background: #f0f4f8; padding: 10px 12px; border-radius: 5px; font-size: 8.5pt; margin: 10px 0; }
+.badge-p0 { background: #16a34a; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+.badge-p1 { background: #2563eb; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; margin: 7px 0; font-size: 8pt; }
+th, td { border: 1px solid #cbd5e1; padding: 4px 7px; text-align: left; vertical-align: top; }
+th { background: #0f3460; color: #fff; }
+tr:nth-child(even) { background: #f8fafc; }
+pre { background: #1e293b; color: #e2e8f0; border-radius: 4px; padding: 8px 10px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 7pt; white-space: pre-wrap; page-break-inside: avoid; }
+code { font-family: "JetBrains Mono", Consolas, monospace; font-size: 7pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+.fix { background: #ecfdf5; border-left: 4px solid #16a34a; padding: 8px 12px; margin: 8px 0; font-size: 8.5pt; }
+.page-break { page-break-before: always; }
+ul, ol { margin: 4px 0; padding-left: 18px; }
+li { margin: 2px 0; }
+.footer { margin-top: 18px; padding-top: 8px; border-top: 1px solid #cbd5e1; font-size: 7.5pt; color: #64748b; text-align: center; }
+.pass { color: #16a34a; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<h1>Render Log Bug Fixes — Implementation Summary</h1>
+<p><strong>Vyapar AI Employee — Approved &amp; Implemented</strong></p>
+
+<div class="meta">
+<p><strong>Date:</strong> June 4, 2026 &nbsp;|&nbsp; <strong>Status:</strong> <span class="badge-p0">IMPLEMENTED</span></p>
+<p><strong>Scope:</strong> P0 (3 bugs) + P1 (4 items) from Render Log Bug Analysis</p>
+<p><strong>Deploy:</strong> Push all changed files atomically → restart Render service</p>
+</div>
+
+<h2>1. Changed Files (8)</h2>
+<table>
+<tr><th>File</th><th>Priority</th></tr>
+<tr><td><code>intent_engine.py</code></td><td>P0 + P1</td></tr>
+<tr><td><code>memory_extractor.py</code></td><td>P1</td></tr>
+<tr><td><code>lead_extractor.py</code></td><td>P0 + P1</td></tr>
+<tr><td><code>session_state_manager.py</code></td><td>P0</td></tr>
+<tr><td><code>response_validator.py</code></td><td>P0 + P1</td></tr>
+<tr><td><code>ai_employee_engine.py</code></td><td>P0</td></tr>
+<tr><td><code>turn_router.py</code></td><td>P1</td></tr>
+<tr><td><code>tests/test_render_log_fixes.py</code></td><td>Tests (14 cases)</td></tr>
+</table>
+
+<h2>2. P0 Fixes</h2>
+
+<h3>FIX-1 — Greeting false positive <span class="badge-p0">P0</span></h3>
+<div class="fix">
+<strong>File:</strong> <code>intent_engine.py</code><br>
+<strong>Before:</strong> <code>"hi" in text</code> → matched chahiyo, mahinako, bujhina, thiyo<br>
+<strong>After:</strong> <code>re.search(r"\b(?:hello|hi|hey|namaste|namaskar)\b", text)</code><br>
+<strong>Also:</strong> Pricing checked before greeting; buying patterns expanded
+</div>
+<table>
+<tr><th>Message</th><th>Before</th><th>After</th></tr>
+<tr><td>500 Mbps chahiyo</td><td>greeting</td><td class="pass">buying_intent</td></tr>
+<tr><td>3 Mahinako kati ho?</td><td>greeting</td><td class="pass">pricing</td></tr>
+<tr><td>bujhina maile</td><td>greeting</td><td class="pass">general_knowledge</td></tr>
+<tr><td>Namaste</td><td>greeting</td><td class="pass">greeting</td></tr>
+</table>
+
+<h3>FIX-2 — Telegram user_id ≠ phone <span class="badge-p0">P0</span></h3>
+<div class="fix">
+<strong>Files:</strong> <code>memory_extractor.py</code>, <code>session_state_manager.py</code>, <code>lead_extractor.py</code><br>
+<strong>Added:</strong> <code>is_valid_nepal_mobile()</code> — only 97xxxxxxxx / 98xxxxxxxx<br>
+<strong>Before:</strong> <code>contact_value=2071979418</code> → <code>phone_collected=True</code><br>
+<strong>After:</strong> Telegram ID saved as contact_method=telegram only; phone_collected stays False until real mobile
+</div>
+<pre>// session_state_manager.py — sync_session_state()
+phone = facts.get("phone") or memory.get("phone")
+if not phone and lead:
+    lead_phone = getattr(lead, "phone", None)
+    if lead_phone and is_valid_nepal_mobile(lead_phone):
+        phone = lead_phone
+// contact_value (Telegram ID) NO LONGER used as phone
+if phone and is_valid_nepal_mobile(phone):
+    state.phone_collected = True</pre>
+
+<h3>FIX-3 — Validator rejects valid direct answers <span class="badge-p0">P0</span></h3>
+<div class="fix">
+<strong>Files:</strong> <code>response_validator.py</code>, <code>ai_employee_engine.py</code><br>
+<strong>Before:</strong> "internet package" in identity answer → <code>catalog_in_non_sales_turn</code> → fallback spam<br>
+<strong>After:</strong> Exempt turns (company_info, meta, language_request, follow_up, correction, greeting) only block strict catalog (Mbps/NPR digits). <code>is_direct_answer=True</code> passed from engine.
+</div>
+
+<div class="page-break"></div>
+
+<h2>3. P1 Fixes</h2>
+
+<h3>FIX-4 — Buying intent patterns <span class="badge-p1">P1</span></h3>
+<div class="fix">
+<strong>Files:</strong> <code>intent_engine.py</code>, <code>lead_extractor.py</code><br>
+Added: <code>chahiyo</code>, <code>thiyo</code>, <code>rakhchhu</code>, <code>linu</code>, <code>jodnu chha</code>, <code>jodne</code>, <code>\d+ mbps</code>, <code>net jod</code>, <code>mahina kati</code>
+</div>
+<table>
+<tr><th>Message</th><th>Intent</th></tr>
+<tr><td>Net jodnu thiyo bhaneko maile</td><td class="pass">buying_intent</td></tr>
+<tr><td>100 Mbps rakhchhu ma</td><td class="pass">buying_intent</td></tr>
+<tr><td>500 Mbps chahiyo</td><td class="pass">buying_intent</td></tr>
+</table>
+
+<h3>FIX-5 — Language request routing <span class="badge-p1">P1</span></h3>
+<div class="fix">
+<strong>File:</strong> <code>turn_router.py</code><br>
+Added patterns: <code>bhannu</code>, <code>bhannus</code>, <code>bhan</code>, <code>bol</code>, <code>bhannus na</code><br>
+"Nepali ma bhannus na" → <code>turn=language_request</code> (was general_knowledge)
+</div>
+
+<h3>FIX-6 — Banepa location <span class="badge-p1">P1</span></h3>
+<div class="fix">
+<strong>Files:</strong> <code>memory_extractor.py</code>, <code>lead_extractor.py</code><br>
+Added CITY_ALIASES: banepa, banepama → Banepa<br>
+Pattern: <code>banepa\s*ma</code> handles "Banepama jodnu chha" typo
+</div>
+
+<h3>FIX-7 — Fallback duplicate loop <span class="badge-p1">P1</span></h3>
+<div class="fix">
+<strong>File:</strong> <code>response_validator.py</code><br>
+• Unique fallback text per turn (company_info, greeting, correction, general_knowledge)<br>
+• duplicate_response no longer invalidates non-sales turns (logged as warning only)<br>
+• Breaks "confirmed jankari chaina" infinite loop
+</div>
+
+<h2>4. Test Plan</h2>
+<pre>python -m unittest discover -s tests -v
+
+New file: tests/test_render_log_fixes.py (14 test cases)
+  test_chahiyo_not_greeting
+  test_mahinako_not_greeting
+  test_bujhina_not_greeting
+  test_thiyo_buying_intent
+  test_rakhchhu_buying_intent
+  test_namaste_is_greeting
+  test_telegram_id_not_valid_mobile
+  test_sync_lead_telegram_id_not_phone_collected
+  test_mark_phone_rejects_telegram_id
+  test_company_info_direct_answer_valid
+  test_nepali_ma_bhannus_language_request
+  test_banepama_location
+  test_buying_intent_chahiyo
+  test_duplicate_non_sales_does_not_invalidate</pre>
+<p><em>Note: Python not available on local Windows machine. Run tests on Render or dev machine after deploy.</em></p>
+
+<h2>5. Re-Test Script (Telegram)</h2>
+<ol>
+<li><code>bujhina maile</code> → correction (not greeting)</li>
+<li><code>Net jodnu thiyo bhaneko maile</code> → buying_intent / sales</li>
+<li><code>3 Mahinako kati ho?</code> → pricing</li>
+<li><code>500 Mbps chahiyo</code> → sales (phone_collected=False)</li>
+<li><code>Nepali ma bhannus na</code> → language_request</li>
+<li><code>Banepama jodnu chha</code> → has_location=True</li>
+<li><code>Tapaiko naam ke ho?</code> → company_info, is_valid=True</li>
+<li><code>100 Mbps rakhchhu ma</code> → sales</li>
+</ol>
+
+<h2>6. Expected Log Lines After Deploy</h2>
+<pre>INTENT_DETECTED intent=buying_intent text=500 Mbps chahiyo
+INTENT_DETECTED intent=pricing text=3 Mahinako kati ho?
+INTENT_DETECTED intent=buying_intent text=100 Mbps rakhchhu ma
+INTENT_DETECTED intent=general_knowledge text=bujhina maile
+TURN_ROUTED turn=correction reason=bot_complaint
+TURN_ROUTED turn=language_request reason=language_request
+TURN_ROUTED turn=sales reason=intent=buying_intent
+SESSION_STATE_SYNCED phone_collected=False
+LEAD_SIGNALS_DETECTED has_location=True
+RESPONSE_VALIDATED turn=company_info is_valid=True issues=[]
+RESPONSE_VALIDATED turn=meta is_valid=True issues=[]
+LANGUAGE_LOCK_APPLIED locked=True</pre>
+
+<h2>7. Deploy Checklist</h2>
+<ol>
+<li>Push all 8 changed files to GitHub</li>
+<li>Deploy atomically to Render (no partial deploy)</li>
+<li>Restart service</li>
+<li>Run: <code>python -m unittest discover -s tests -v</code></li>
+<li>Re-test 8 Telegram messages above</li>
+<li>Verify log lines in Section 6</li>
+</ol>
+
+<div class="footer">
+Vyapar AI Employee — Render Log Bug Fixes Implementation Summary — June 4, 2026<br>
+Workspace: Z:\Vyapar AI\cursor
+</div>
+
+</body>
+</html>

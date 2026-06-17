@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vyapar AI — Phase 3 P0 Implementation Report</title>
+<style>
+  @page { margin: 18mm 16mm; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; line-height: 1.55; max-width: 900px; margin: 0 auto; padding: 24px; font-size: 11pt; }
+  h1 { font-size: 22pt; color: #0d3b66; border-bottom: 3px solid #0d3b66; padding-bottom: 8px; margin-bottom: 4px; }
+  h2 { font-size: 14pt; color: #145da0; margin-top: 28px; border-left: 4px solid #145da0; padding-left: 10px; }
+  h3 { font-size: 12pt; color: #333; margin-top: 18px; }
+  .meta { color: #555; font-size: 10pt; margin-bottom: 24px; }
+  .verdict { background: #e8f5e9; border: 1px solid #4caf50; border-radius: 6px; padding: 14px 18px; margin: 20px 0; }
+  .verdict strong { color: #2e7d32; font-size: 13pt; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 10pt; }
+  th { background: #0d3b66; color: #fff; text-align: left; padding: 8px 10px; }
+  td { border: 1px solid #ccc; padding: 7px 10px; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f9fc; }
+  code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+  pre { background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 12px; font-size: 9pt; overflow-x: auto; }
+  .pass { color: #2e7d32; font-weight: bold; }
+  .pending { color: #e65100; font-weight: bold; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  .footer { margin-top: 40px; font-size: 9pt; color: #888; border-top: 1px solid #ddd; padding-top: 12px; }
+</style>
+</head>
+<body>
+
+<h1>Phase 3 P0 Implementation Report</h1>
+<p class="meta">
+  <strong>Project:</strong> Vyapar AI Employee Platform &nbsp;|&nbsp;
+  <strong>Tenant (pilot):</strong> HONS &nbsp;|&nbsp;
+  <strong>Date:</strong> June 1, 2026 &nbsp;|&nbsp;
+  <strong>Source of truth:</strong> Recent Test Report (June 3, 2026)
+</p>
+
+<div class="verdict">
+  <strong>Status: P0 IMPLEMENTED — READY FOR DEPLOY + SMOKE TEST</strong><br>
+  All 5 P0 modules built, wired into <code>ai_employee_engine.py</code>, and covered by unit tests.
+  P1 (Dialogue Planner, Persona Manager, Escalation Handler) intentionally not started until P0 tests pass in production.
+</div>
+
+<h2>1. Executive Summary</h2>
+<p>
+  Phase 3 P0 addresses the behavioral failures identified in the June 3 Telegram test session.
+  The root cause was not lead detection — it was missing <strong>conversation state</strong>,
+  <strong>turn routing</strong>, and <strong>response validation</strong>. P0 adds a session brain
+  layer between Telegram ingress and the LLM, enforcing rules the prompt alone could not guarantee.
+</p>
+
+<h2>2. P0 Modules Delivered</h2>
+<table>
+  <tr><th>#</th><th>Module</th><th>File</th><th>Function</th></tr>
+  <tr><td>1</td><td>Session State Manager</td><td><code>session_state_manager.py</code></td><td>Tracks user_id, company_id, language, name, phone, location, package_interest, lead_stage, pitch_count, phone_collected, escalation_requested per tenant session</td></tr>
+  <tr><td>2</td><td>Turn Router</td><td><code>turn_router.py</code></td><td>Routes: greeting, company_info, support, sales, objection, escalation, correction, memory_query, general_knowledge. Returns direct answers without LLM where safe</td></tr>
+  <tr><td>3</td><td>Response Validator</td><td><code>response_validator.py</code></td><td>Blocks repeated package pitch, repeated phone request, repeated closing sentence, duplicate responses (&gt;70% overlap), hallucinated phone numbers</td></tr>
+  <tr><td>4</td><td>Language Lock</td><td><code>language_lock.py</code></td><td>Detects Nepali vs English from user text; injects lock prompt so LLM does not randomly switch language</td></tr>
+  <tr><td>5</td><td>Memory Validator</td><td><code>memory_validator.py</code></td><td>Saves name only from high-confidence patterns; rejects "I am Indian I am Nepali"; phone saved only if present in source message</td></tr>
+</table>
+
+<h2>3. Database Migration</h2>
+<p>New table: <code>conversation_state</code> (composite primary key: <code>user_id</code> + <code>company_id</code>)</p>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td>user_id, company_id</td><td>VARCHAR (PK)</td><td>Session identity per tenant</td></tr>
+  <tr><td>language</td><td>VARCHAR(16)</td><td>nepali | english</td></tr>
+  <tr><td>name, phone, location</td><td>VARCHAR</td><td>Cached customer facts</td></tr>
+  <tr><td>package_interest, lead_stage</td><td>VARCHAR</td><td>Sales context</td></tr>
+  <tr><td>pitch_count</td><td>INTEGER</td><td>Times package was pitched</td></tr>
+  <tr><td>phone_collected</td><td>BOOLEAN</td><td>Stops re-asking phone</td></tr>
+  <tr><td>escalation_requested</td><td>BOOLEAN</td><td>Escalation turn tracking</td></tr>
+  <tr><td>last_assistant_reply</td><td>TEXT</td><td>Duplicate detection baseline</td></tr>
+  <tr><td>turn_count</td><td>INTEGER</td><td>Session turn counter</td></tr>
+</table>
+<p>
+  Auto-created on startup via <code>init_db()</code> → SQLAlchemy <code>create_all</code>.<br>
+  Manual SQL for existing Postgres: <code>docs/migrations/001_conversation_state.sql</code>
+</p>
+
+<h2>4. Pipeline Architecture (After P0)</h2>
+<pre>
+Telegram update
+  → main.py (update_id dedup — prevents double replies)
+  → sanitize_user_text
+  → detect_language → session state sync
+  → extract_memory_facts → memory_validator → save memory
+  → turn_router
+      ├─ direct_answer? → response_validator → reply (no LLM)
+      └─ memory_query?  → direct memory answer
+  → lead extraction + upsert → session sync
+  → sales mode (turn-aware, not always ON)
+  → compose_system_prompt (+ language lock + session rules + turn hint)
+  → OpenAI
+  → response_validator (strip/blocks repeat pitch, phone, closing)
+  → record session state + save chat turn
+  → Telegram reply
+</pre>
+
+<h2>5. Success Criteria — Before vs After</h2>
+<table>
+  <tr><th>Criterion</th><th>Before (June 3 test)</th><th>After (P0)</th><th>Status</th></tr>
+  <tr><td>Phone given once → never asked again</td><td>Re-asked every turn</td><td><code>phone_collected=True</code> + validator strips phone asks</td><td class="pass">Implemented</td></tr>
+  <tr><td>"Kun net ho?" → company name only</td><td>100 Mbps package pitch</td><td>Direct answer: "Yo Himalayan Online Service Pvt. Ltd. ko official AI employee ho."</td><td class="pass">Implemented</td></tr>
+  <tr><td>"Tapaiko naam ke ho?" → AI identity</td><td>Awkward "pratinidhi" reply</td><td>Direct: "Ma ... ko AI employee hu..."</td><td class="pass">Implemented</td></tr>
+  <tr><td>Nepali session stays Nepali</td><td>English/Nepali mix</td><td><code>language_lock_prompt</code> injected into system prompt</td><td class="pass">Implemented</td></tr>
+  <tr><td>No repeated package pitch</td><td>Same 100 Mbps pitch 15+ times</td><td>Overlap ≥70% → fallback; pitch_count rules in prompt</td><td class="pass">Implemented</td></tr>
+  <tr><td>No hallucinated phone</td><td>Invented 9898989898</td><td>Phone saved only if in user text; validator strips unknown numbers</td><td class="pass">Implemented</td></tr>
+  <tr><td>No duplicate Telegram replies</td><td>Double messages sent</td><td><code>update_id</code> dedup cache in main.py</td><td class="pass">Implemented</td></tr>
+</table>
+
+<h2>6. Changed Files</h2>
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>session_state_manager.py</code></td><td>NEW — session CRUD + prompt block</td></tr>
+  <tr><td><code>turn_router.py</code></td><td>NEW — 9 turn routes + direct answers</td></tr>
+  <tr><td><code>response_validator.py</code></td><td>NEW — post-LLM validation</td></tr>
+  <tr><td><code>language_lock.py</code></td><td>NEW — language detection + lock</td></tr>
+  <tr><td><code>memory_validator.py</code></td><td>NEW — high-confidence fact filtering</td></tr>
+  <tr><td><code>memory_db.py</code></td><td>Added ConversationState model</td></tr>
+  <tr><td><code>ai_employee_engine.py</code></td><td>Full P0 pipeline integration</td></tr>
+  <tr><td><code>prompts.py</code></td><td>Session state, language lock, turn hint blocks</td></tr>
+  <tr><td><code>main.py</code></td><td>Telegram update_id deduplication</td></tr>
+  <tr><td><code>tests/test_p0_phase3.py</code></td><td>NEW — 17 P0 unit tests</td></tr>
+  <tr><td><code>tests/test_sales_mode.py</code></td><td>Updated for turn_route parameter</td></tr>
+  <tr><td><code>docs/migrations/001_conversation_state.sql</code></td><td>NEW — manual migration reference</td></tr>
+</table>
+
+<h2>7. Test Coverage</h2>
+<p>Run locally:</p>
+<pre>cd "Z:\Vyapar AI\cursor"
+python -m unittest discover -s tests -v</pre>
+<table>
+  <tr><th>Test file</th><th>Covers</th></tr>
+  <tr><td><code>test_p0_phase3.py</code></td><td>Memory validator, language lock, turn router, session state, response validator, success criteria</td></tr>
+  <tr><td><code>test_sales_mode.py</code></td><td>Sales mode activation with turn_route</td></tr>
+  <tr><td><code>test_sales_objection.py</code></td><td>Objection detection (Phase 2)</td></tr>
+  <tr><td><code>test_lead_phase2.py</code></td><td>Lead scoring/staging (Phase 2)</td></tr>
+</table>
+
+<h2>8. Deploy Checklist</h2>
+<ol>
+  <li>Deploy <strong>all files atomically</strong> to Render (partial deploy causes import errors)</li>
+  <li>Restart service → <code>init_db()</code> creates <code>conversation_state</code> table</li>
+  <li>Run unit tests on deploy machine before going live</li>
+  <li>Telegram smoke test — send these 7 messages in order (Nepali):</li>
+</ol>
+<table>
+  <tr><th>#</th><th>Message</th><th>Expected</th></tr>
+  <tr><td>1</td><td>Namaste</td><td>Warm greeting, no package pitch</td></tr>
+  <tr><td>2</td><td>Kun net ho?</td><td>Company name only, no Mbps pitch</td></tr>
+  <tr><td>3</td><td>Tapaiko naam ke ho?</td><td>AI employee identity, not user name</td></tr>
+  <tr><td>4</td><td>Mero naam Ram ho</td><td>Acknowledge name saved</td></tr>
+  <tr><td>5</td><td>9801234567</td><td>Phone saved, not re-asked later</td></tr>
+  <tr><td>6</td><td>100 Mbps kati ho?</td><td>Price answer, one pitch only</td></tr>
+  <tr><td>7</td><td>(repeat question 6)</td><td>No repeated full package pitch</td></tr>
+</table>
+
+<h2>9. P1 — Not Started (By Design)</h2>
+<table>
+  <tr><th>Module</th><th>Status</th></tr>
+  <tr><td>6. Dialogue Planner</td><td class="pending">Pending — after P0 smoke test passes</td></tr>
+  <tr><td>7. Persona Manager</td><td class="pending">Pending</td></tr>
+  <tr><td>8. Escalation Handler</td><td class="pending">Pending</td></tr>
+  <tr><td>9. Telegram Inline Keyboard</td><td class="pending">P2</td></tr>
+  <tr><td>10. Meta Conversation Handler</td><td class="pending">P2</td></tr>
+</table>
+
+<h2>10. Recommended Git Commits</h2>
+<pre>
+git add memory_db.py session_state_manager.py docs/migrations/001_conversation_state.sql
+git commit -m "P0: add session state manager and conversation_state table"
+
+git add memory_validator.py
+git commit -m "P0: add memory validator for high-confidence name and phone"
+
+git add language_lock.py
+git commit -m "P0: add language lock for Nepali/English sessions"
+
+git add turn_router.py
+git commit -m "P0: add turn router with direct answers for info and identity"
+
+git add response_validator.py
+git commit -m "P0: add response validator to block repeat pitch and phone asks"
+
+git add ai_employee_engine.py prompts.py main.py tests/
+git commit -m "P0: wire session state, router, validators into employee engine"
+</pre>
+
+<div class="footer">
+  Vyapar AI Employee Platform — Phase 3 P0 Implementation Report — Generated June 1, 2026<br>
+  Workspace: Z:\Vyapar AI\cursor &nbsp;|&nbsp; Pilot tenant: HONS (company_profiles.json)
+</div>
+
+</body>
+</html>

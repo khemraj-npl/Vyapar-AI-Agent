@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Phase 2 Implementation Report — Smart Lead Qualification | Vyapar AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page{size:A4;margin:12mm 11mm}
+body{font-family:Inter,"Noto Sans Devanagari",sans-serif;font-size:9pt;line-height:1.45;color:#111;max-width:210mm;margin:0 auto;padding:14px 16px 28px}
+h1{font-size:17pt;color:#0f3460;border-bottom:3px solid #e94560;padding-bottom:5px;margin:0}
+h2{font-size:11.5pt;color:#16213e;margin:16px 0 7px;border-left:4px solid #e94560;padding-left:8px;page-break-after:avoid}
+h3{font-size:9.5pt;color:#0f3460;margin:10px 0 4px}
+.meta{background:#f0f4f8;padding:10px 12px;border-radius:5px;font-size:8.5pt;margin:10px 0}
+.badge-ok{background:#16a34a;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-v2{background:#2563eb;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+table{width:100%;border-collapse:collapse;margin:7px 0;font-size:8pt}
+th,td{border:1px solid #cbd5e1;padding:4px 7px;text-align:left;vertical-align:top}
+th{background:#0f3460;color:#fff}
+tr:nth-child(even){background:#f8fafc}
+pre{font-family:"JetBrains Mono",Consolas,monospace;font-size:7pt;background:#f1f5f9;padding:8px 10px;border-radius:4px;border:1px solid #e2e8f0;white-space:pre-wrap}
+.diagram{font-family:"JetBrains Mono",monospace;font-size:7pt;background:#f8fafc;border:1px solid #e2e8f0;padding:9px;white-space:pre-wrap;line-height:1.3}
+.rule{background:#eff6ff;border-left:4px solid #2563eb;padding:8px 11px;margin:8px 0;font-size:8.5pt}
+.page-break{page-break-before:always}
+ul,ol{margin:4px 0;padding-left:18px}li{margin:2px 0}
+.footer{margin-top:18px;padding-top:8px;border-top:1px solid #cbd5e1;font-size:7.5pt;color:#64748b;text-align:center}
+</style>
+</head>
+<body>
+
+<h1>Phase 2 Implementation Report</h1>
+<p><strong>Smart Lead Qualification — Vyapar AI Employee Platform</strong></p>
+
+<div class="meta">
+<p><strong>Status:</strong> <span class="badge-ok">IMPLEMENTED</span> &nbsp; <span class="badge-v2">PLAN v2 + ADJUSTMENTS</span></p>
+<p><strong>Date:</strong> June 2, 2026</p>
+<p><strong>Goal:</strong> Sales employee with lead intelligence — not a FAQ bot</p>
+</div>
+
+<div class="rule">
+<strong>Final qualified rule (approved adjustment):</strong><br/>
+<code>qualified</code> requires <strong>(phone OR WhatsApp contact)</strong> AND <strong>(location OR speed)</strong>.<br/>
+Score alone cannot create <code>qualified</code> — max stage without contact is <code>interested</code>.
+</div>
+
+<h2>1. What Was Built</h2>
+<table>
+<tr><th>Capability</th><th>Module</th></tr>
+<tr><td>Buying intent detection (Nepali + English)</td><td>lead_extractor.py</td></tr>
+<tr><td>Lead signals: budget, location, speed, urgency, coverage</td><td>lead_extractor.py</td></tr>
+<tr><td>contact_method: phone / telegram / whatsapp</td><td>lead_extractor.py</td></tr>
+<tr><td>lead_score 0–100 + stages</td><td>lead_extractor.py + lead_manager.py</td></tr>
+<tr><td>Lead persistence (leads table)</td><td>memory_db.py + lead_manager.py</td></tr>
+<tr><td>Sales mode — no full package list dump</td><td>products.py + ai_employee_engine.py</td></tr>
+<tr><td>Sales conversation memory on lead</td><td>lead_manager.py</td></tr>
+<tr><td>Admin alert placeholder</td><td>admin_notifier.py</td></tr>
+<tr><td>Lead export CLI</td><td>admin_export_leads.py</td></tr>
+</table>
+
+<h2>2. Architecture After Phase 2</h2>
+<div class="diagram">Telegram → main.py → ai_employee_engine.py
+  ├── memory_extractor (unchanged)
+  ├── lead_extractor (NEW)
+  │     → compute score + derive stage
+  ├── lead_manager (NEW) → leads table
+  ├── products.find_best_product_match (NEW)
+  ├── sales_mode? → single alternative, no catalog dump
+  ├── prompts: lead_block + sales_memory_block
+  ├── openai_engine (unchanged)
+  └── admin_notifier placeholder (NEW)
+
+Preserved: company_manager, COMPANY_ID, memory, Telegram webhook</div>
+
+<h2>3. Pipeline (16 steps)</h2>
+<ol>
+<li>sanitize + save user turn</li>
+<li>extract_memory_facts</li>
+<li>extract_lead_bundle (signals, score, stage)</li>
+<li>upsert_lead if should_process_lead</li>
+<li>direct memory answer (unchanged)</li>
+<li>company config check</li>
+<li>find_best_product_match</li>
+<li>resolve sales_mode</li>
+<li>compose prompt (sales/coverage hints)</li>
+<li>OpenAI reply</li>
+<li>update_sales_memory</li>
+<li>maybe_notify_admin</li>
+</ol>
+
+<h2>4. Lead Stages &amp; Scoring</h2>
+<h3>Score factors (0–100, additive)</h3>
+<table>
+<tr><th>Factor</th><th>Points</th></tr>
+<tr><td>Buying intent</td><td>+25</td></tr>
+<tr><td>Speed mentioned</td><td>+15</td></tr>
+<tr><td>Location mentioned</td><td>+15</td></tr>
+<tr><td>Budget mentioned</td><td>+10</td></tr>
+<tr><td>Urgency high / medium</td><td>+10 / +5</td></tr>
+<tr><td>Phone / WhatsApp</td><td>+20 / +18</td></tr>
+<tr><td>Name, telegram contact, coverage flag</td><td>+5 each</td></tr>
+</table>
+
+<h3>Stage rules (hard gates)</h3>
+<table>
+<tr><th>Stage</th><th>Requirements</th></tr>
+<tr><td>new</td><td>Minimal — buying only</td></tr>
+<tr><td>interested</td><td>Buying + signals OR score≥40 — NO qualified without contact</td></tr>
+<tr><td>qualified</td><td><strong>(phone OR whatsapp) AND (location OR speed)</strong></td></tr>
+<tr><td>hot</td><td>qualified + high urgency OR medium urgency + score≥75</td></tr>
+</table>
+<p>Stage never downgrades on re-upsert.</p>
+
+<div class="page-break"></div>
+
+<h2>5. Example Flow (Consistent)</h2>
+<pre>Message 1: "Baluwatar ma 500 mbps internet jodnu cha"
+  buying_intent = true
+  coverage_check_needed = true
+  location = Baluwatar, speed = 500 Mbps
+  contact = telegram only (no phone)
+  score ≈ 55
+  stage = interested  ← NOT qualified (no phone/WhatsApp)
+
+Message 2: "Mero phone 9801234567 ho"
+  phone added
+  stage = qualified  ← phone + location + speed
+
+Message 3: "Chhito chha aile install garna cha"
+  urgency = high
+  stage = hot</pre>
+
+<h2>6. Sales Mode — Unavailable Package</h2>
+<p>When buying intent or no exact product match:</p>
+<ul>
+<li>Do NOT inject full package catalog</li>
+<li>Inject single suggested alternative via format_alternative_product()</li>
+<li>Acknowledge customer need + coverage pending if ISP</li>
+<li>Ask for phone or WhatsApp if missing</li>
+<li>Update last_discussed_product, last_sales_question, last_sales_reply on lead</li>
+</ul>
+
+<h2>7. Files Created (5)</h2>
+<table>
+<tr><th>File</th><th>Purpose</th></tr>
+<tr><td>lead_extractor.py</td><td>Intent, signals, score, stage derivation</td></tr>
+<tr><td>lead_manager.py</td><td>Upsert, sales memory, export, prompt blocks</td></tr>
+<tr><td>admin_notifier.py</td><td>ADMIN_ALERT_ENABLED log placeholder</td></tr>
+<tr><td>admin_export_leads.py</td><td>CLI export to exports/</td></tr>
+<tr><td>tests/test_lead_phase2.py</td><td>7 unit tests for checklist</td></tr>
+</table>
+
+<h2>8. Files Modified (7)</h2>
+<table>
+<tr><th>File</th><th>Change</th></tr>
+<tr><td>memory_db.py</td><td>Lead model (25 columns)</td></tr>
+<tr><td>products.py</td><td>find_best_product_match, include_full_catalog flag</td></tr>
+<tr><td>prompts.py</td><td>SALES_EMPLOYEE_HINT, lead/sales blocks</td></tr>
+<tr><td>intent_engine.py</td><td>buying_intent, coverage_inquiry intents</td></tr>
+<tr><td>ai_employee_engine.py</td><td>Full lead pipeline integration</td></tr>
+<tr><td>env.example</td><td>LEAD_ACTIVE_DAYS, ADMIN_ALERT_*</td></tr>
+<tr><td>README_DEPLOY.md</td><td>Lead test messages + export docs</td></tr>
+</table>
+
+<h2>9. leads Table Schema</h2>
+<pre>id, user_id, company_id, stage, lead_score
+customer_name, location, budget, requested_speed, phone
+contact_method, contact_value, urgency, buying_intent
+coverage_check_needed, coverage_area, coverage_status
+matched_product, alternative_product
+last_discussed_product, last_sales_question, last_sales_reply
+source_message, signals_json, created_at, updated_at</pre>
+
+<h2>10. Environment Variables</h2>
+<pre>COMPANY_ID=hons
+LEAD_ACTIVE_DAYS=30
+ADMIN_ALERT_ENABLED=false
+ADMIN_TELEGRAM_CHAT_ID=
+ADMIN_ALERT_MIN_SCORE=80
+ADMIN_ALERT_STAGES=hot,qualified</pre>
+
+<h2>11. Testing Checklist</h2>
+<table>
+<tr><th>#</th><th>Test</th><th>Expected</th></tr>
+<tr><td>1</td><td>Internet jodnu cha</td><td>stage=new/interested, buying=true</td></tr>
+<tr><td>2</td><td>Baluwatar ma 500 mbps internet jodnu cha</td><td>interested, coverage=true, NOT qualified</td></tr>
+<tr><td>3</td><td>Phone + location + speed</td><td>stage=qualified</td></tr>
+<tr><td>4</td><td>WhatsApp + location + speed</td><td>stage=qualified or hot</td></tr>
+<tr><td>5</td><td>500 mbps (no catalog match)</td><td>sales mode, no full list</td></tr>
+<tr><td>6</td><td>Support hours kati ho?</td><td>no lead upsert</td></tr>
+<tr><td>7</td><td>Mero naam ke ho?</td><td>direct memory only</td></tr>
+<tr><td>8</td><td>ADMIN_ALERT_ENABLED=true + hot lead</td><td>ADMIN_ALERT_PLACEHOLDER log</td></tr>
+</table>
+<pre>python -m unittest tests.test_lead_phase2 -v
+python admin_export_leads.py</pre>
+
+<h2>12. Deploy Checklist (Render)</h2>
+<ol>
+<li>Deploy ALL new + modified files together</li>
+<li>Set COMPANY_ID, LEAD_ACTIVE_DAYS, ADMIN_ALERT_ENABLED</li>
+<li>Restart service (creates leads table via init_db)</li>
+<li>Send lead test messages via Telegram</li>
+<li>Check logs: LEAD_SIGNALS_DETECTED, LEAD_UPSERTED, SALES_MODE_ACTIVE</li>
+<li>Export: python admin_export_leads.py</li>
+</ol>
+
+<h2>13. Suggested Git Commits (10)</h2>
+<pre>1. feat(leads): add Lead model to memory_db
+2. feat(leads): add lead_manager persistence layer
+3. feat(leads): add lead extraction, scoring, stage rules
+4. feat(leads): product match and sales-mode catalog control
+5. feat(leads): sales employee and coverage prompt blocks
+6. feat(leads): buying intent and lead qualification intents
+7. feat(leads): wire lead pipeline into reply engine
+8. feat(leads): admin alert placeholder
+9. feat(leads): admin lead export CLI
+10. test(leads): phase 2 checklist and deploy docs</pre>
+
+<h2>14. Remaining Technical Debt</h2>
+<ul>
+<li>Admin alert is log-only — Phase 3: Telegram admin channel</li>
+<li>No CRM webhook export</li>
+<li>coverage_status always pending — no real coverage API</li>
+<li>create_all only — no Alembic migrations</li>
+<li>company_id not on user_memory table</li>
+<li>Blocking webhook handler unchanged</li>
+</ul>
+
+<h2>15. Recommended Phase 3</h2>
+<ul>
+<li>Real admin Telegram notifications</li>
+<li>CRM webhook (Zoho/HubSpot)</li>
+<li>Background worker for webhook</li>
+<li>company_id on memory tables</li>
+<li>Coverage API integration for ISP</li>
+</ul>
+
+<div class="footer">Vyapar AI Employee Platform — Phase 2 Implementation Report · June 2, 2026 · v1.0</div>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vyapar AI — Telegram Test Failure Analysis &amp; Fixes</title>
+<style>
+  @page { margin: 14mm 12mm; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 9.5pt; color: #111; line-height: 1.45; padding: 18px; max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 17pt; color: #b71c1c; border-bottom: 2px solid #b71c1c; padding-bottom: 6px; }
+  h2 { font-size: 12pt; color: #0d3b66; margin-top: 22px; border-left: 4px solid #0d3b66; padding-left: 8px; }
+  h3 { font-size: 10.5pt; color: #333; margin-top: 14px; }
+  .meta { color: #555; font-size: 9pt; margin-bottom: 18px; }
+  pre { background: #f4f4f4; border: 1px solid #ccc; padding: 8px; font-family: Consolas, monospace; font-size: 7.5pt; white-space: pre-wrap; page-break-inside: avoid; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.5pt; margin: 10px 0; }
+  th { background: #0d3b66; color: #fff; text-align: left; padding: 5px 8px; }
+  td { border: 1px solid #ccc; padding: 4px 8px; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f9fc; }
+  .bug { background: #fff3e0; border-left: 3px solid #e65100; padding: 8px 12px; margin: 10px 0; }
+  .fix { background: #e8f5e9; border-left: 3px solid #2e7d32; padding: 8px 12px; margin: 10px 0; }
+  code { background: #eee; padding: 1px 4px; font-size: 8.5pt; }
+  .footer { font-size: 7.5pt; color: #888; margin-top: 28px; border-top: 1px solid #ddd; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Telegram Test Failure Analysis &amp; Production Fixes</h1>
+<p class="meta">Project: Vyapar AI Employee &nbsp;|&nbsp; Tenant: HONS &nbsp;|&nbsp; Date: June 3, 2026 &nbsp;|&nbsp; Source: Live Telegram screenshots</p>
+
+<h2>A. Execution Paths (Failed Messages)</h2>
+
+<h3>"Nepal ma internet ko user kati chha?"</h3>
+<pre>user message
+→ detect_intent()          → "pricing" (BUG: bare "kati" keyword)
+→ route_turn()             → general_knowledge (FIXED)
+→ _resolve_sales_mode()    → True via lead_stage=interested (BUG)
+→ lead_block injected      → 300 Mbps from active lead
+→ LLM reply                → package pitch appended
+→ validate_response()      → overlap → build_fallback_reply("sales")
+→ output                   → "package suggest garna sakchha"</pre>
+
+<h3>"Tapai le kati padhnu bhayeko chha?"</h3>
+<pre>user message → detect_intent() → "pricing" (BUG)
+→ route_turn() → general_knowledge (FIXED)
+→ _resolve_sales_mode() → True via warm lead (BUG)
+→ fallback → sales package text</pre>
+
+<h3>"Mero naam Khemraj Adhikari ho"</h3>
+<pre>user message → extract_memory_facts() → name saved
+→ upsert_lead() still runs → old requested_speed=300 Mbps merged
+→ lead_block in prompt → "300 Mbps interest" (BUG)
+→ LLM → "Tapainko 300 Mbps ko chaso chha"</pre>
+
+<h3>"Nepali type garnus na" / emoji 😇</h3>
+<pre>user message → detect_language() → "english" on emoji (BUG)
+→ resolve_session_language() → overwrites nepali → english
+→ LLM → English reply / "I only speak English" contradiction</pre>
+
+<h3>Coverage check repeated</h3>
+<pre>user message → turn=sales → sales_mode=True + COVERAGE_SALES_HINT every turn
+→ coverage_mention_count not tracked (BUG)
+→ validate_response fallback → generic/sales text again</pre>
+
+<h3>"secondary router ko kati parchha?"</h3>
+<pre>user message → detect_intent() → "pricing"
+→ route_turn() → sales → product_block → 100 Mbps catalog
+→ LLM → package pitch instead of "price unknown"</pre>
+
+<h2>B. Module Blame Matrix</h2>
+<table>
+<tr><th>Failure</th><th>Primary Module</th><th>Secondary</th></tr>
+<tr><td>General questions → sales</td><td>intent_engine.py</td><td>ai_employee_engine.py _resolve_sales_mode</td></tr>
+<tr><td>Warm lead forces sales on any turn</td><td>ai_employee_engine.py</td><td>turn_router.py</td></tr>
+<tr><td>Name turn → 300 Mbps</td><td>ai_employee_engine.py</td><td>lead_extractor.py</td></tr>
+<tr><td>Language flip</td><td>language_lock.py</td><td>ai_employee_engine.py</td></tr>
+<tr><td>Coverage loop</td><td>session_state_manager.py</td><td>response_validator.py</td></tr>
+<tr><td>Unknown router price → pitch</td><td>turn_router.py</td><td>response_validator.py</td></tr>
+</table>
+
+<h2>C. Bugs &amp; Patches Applied</h2>
+
+<div class="bug"><strong>BUG-1 Intent routing</strong><br>
+Root cause: <code>detect_intent()</code> treats any "kati" as pricing.<br>
+File: <code>intent_engine.py</code> — <code>detect_intent</code>, <code>_is_general_knowledge</code>, <code>_is_pricing_intent</code><br>
+Fix: General-knowledge patterns checked first; "kati" only pricing with parchha/ho/cha or product context.</div>
+
+<div class="bug"><strong>BUG-2 Sales mode on non-sales turns</strong><br>
+Root cause: <code>_resolve_sales_mode()</code> did not block all non-sales turn types when lead_stage=interested.<br>
+File: <code>ai_employee_engine.py</code> — <code>_resolve_sales_mode</code><br>
+Fix: <code>NON_SALES_TURNS</code> frozenset returns False immediately for greeting, general_knowledge, memory_write, correction, etc.</div>
+
+<div class="bug"><strong>BUG-3 Name → 300 Mbps contamination</strong><br>
+Root cause: Name-only turn still ran upsert_lead() and injected lead_block with prior requested_speed.<br>
+Files: <code>turn_router.py</code> (memory_write turn), <code>ai_employee_engine.py</code> (suppress_lead_context), <code>memory_validator.py</code> (skip package on name-only)</div>
+
+<div class="bug"><strong>BUG-4 Language lock failure</strong><br>
+Root cause: Language replaced every turn; emoji flipped Nepali → English; LLM claimed "English only" in Nepali.<br>
+File: <code>language_lock.py</code> — sticky lock, preference detection, stronger prompt</div>
+
+<div class="bug"><strong>BUG-5 Coverage repetition</strong><br>
+Root cause: No coverage counter; COVERAGE_SALES_HINT on every sales turn.<br>
+Files: <code>session_state_manager.py</code>, <code>memory_db.py</code>, <code>response_validator.py</code>, <code>turn_router.py</code></div>
+
+<div class="bug"><strong>BUG-6 Unknown product → package pitch</strong><br>
+Root cause: No unknown_product route.<br>
+File: <code>turn_router.py</code> — UNKNOWN_PRODUCT_PATTERNS → direct "confirmed price chaina"</div>
+
+<div class="bug"><strong>BUG-7 Bad validator fallback</strong><br>
+Root cause: build_fallback_reply() returned sales text on general_knowledge validation failure.<br>
+File: <code>response_validator.py</code> — turn-specific non-sales fallbacks</div>
+
+<h2>D. Logging Added</h2>
+<table>
+<tr><th>Event</th><th>Location</th></tr>
+<tr><td>INTENT_DETECTED</td><td>ai_employee_engine.py</td></tr>
+<tr><td>TURN_ROUTED</td><td>ai_employee_engine.py</td></tr>
+<tr><td>MEMORY_READ</td><td>session_state_manager.log_memory_read</td></tr>
+<tr><td>MEMORY_WRITE</td><td>session_state_manager.log_memory_write</td></tr>
+<tr><td>LANGUAGE_LOCK_APPLIED</td><td>language_lock.py, ai_employee_engine.py</td></tr>
+<tr><td>RESPONSE_VALIDATED</td><td>response_validator.py</td></tr>
+</table>
+
+<h2>Changed Files</h2>
+<pre>intent_engine.py
+turn_router.py
+language_lock.py
+memory_validator.py
+response_validator.py
+session_state_manager.py
+memory_db.py
+ai_employee_engine.py
+tests/test_p0_phase3.py
+docs/migrations/002_language_lock_coverage.sql</pre>
+
+<h2>Database Migration</h2>
+<pre>ALTER TABLE conversation_state ADD COLUMN IF NOT EXISTS language_locked BOOLEAN DEFAULT FALSE;
+ALTER TABLE conversation_state ADD COLUMN IF NOT EXISTS coverage_mention_count INTEGER DEFAULT 0;</pre>
+
+<h2>Expected After Fix</h2>
+<table>
+<tr><th>User Message</th><th>Expected Reply</th></tr>
+<tr><td>Nepal ma internet ko user kati chha?</td><td>"confirmed data chaina" — no Mbps</td></tr>
+<tr><td>Tapai le kati padhnu bhayeko chha?</td><td>AI employee answer — no package</td></tr>
+<tr><td>Mero naam Khemraj Adhikari ho</td><td>"Naam save bhayo" — no 300 Mbps</td></tr>
+<tr><td>Nepali type garnus na</td><td>Nepali lock; stays Nepali</td></tr>
+<tr><td>secondary router ko kati parchha?</td><td>"confirmed price chaina" — no pitch</td></tr>
+<tr><td>Coverage asked 3rd time</td><td>No repeat coverage block</td></tr>
+</table>
+
+<h2>Deploy Checklist</h2>
+<ol>
+<li>Deploy all changed files atomically to Render</li>
+<li>Run migration on Postgres if table already exists</li>
+<li>Restart service</li>
+<li>Run: <code>python -m unittest discover -s tests -v</code></li>
+<li>Re-test the 6 messages above in Telegram</li>
+</ol>
+
+<div class="footer">
+Vyapar AI Employee — Telegram Test Failure Analysis — Generated June 3, 2026<br>
+Workspace: Z:\Vyapar AI\cursor
+</div>
+
+</body>
+</html>

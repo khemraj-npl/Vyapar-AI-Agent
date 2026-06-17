@@ -1,0 +1,67 @@
+# Vyapar AI Production Logs — Session 2071979418
+# Date: 2026-06-04 02:26–02:33 UTC
+# NOTE: Bot token redacted in this file for security.
+
+2026-06-04T02:26:13 INTENT_DETECTED intent=general text=Bara ma kati wata nagarpalika chha. ?
+2026-06-04T02:26:13 TURN_ROUTED turn=general_knowledge reason=default
+2026-06-04T02:26:14 RESPONSE_VALIDATED turn=general_knowledge is_valid=True
+2026-06-04T02:26:14 EMPLOYEE_REPLY_GENERATED sales_mode=False
+
+2026-06-04T02:26:28 TELEGRAM_UPDATE text=🤣
+2026-06-04T02:26:28 LANGUAGE_LOCK language=nepali reason=sticky_short_input locked=True
+2026-06-04T02:26:32 RESPONSE_VALIDATED is_valid=True
+
+2026-06-04T02:26:52 TELEGRAM_UPDATE text=Tapai sanga jaanakari nai chhaina.
+2026-06-04T02:26:54 RESPONSE_VALIDATED is_valid=True issues=['repeated_phone_request']
+2026-06-04T02:26:54 RESPONSE_VALIDATOR_SANITIZED
+
+2026-06-04T02:27:18 TELEGRAM_UPDATE text=Malai chaaso chaahinchha?
+2026-06-04T02:27:20 RESPONSE_VALIDATED is_valid=True issues=['duplicate_response overlap=0.85', 'repeated_package_pitch overlap=0.85']
+2026-06-04T02:27:20 RESPONSE_VALIDATOR_SANITIZED
+
+2026-06-04T02:28:04 TELEGRAM_UPDATE text=La 100 mbps ko 13 mahinako jadan garna pathaidinus turuntai.
+2026-06-04T02:28:04 INTENT_DETECTED intent=buying_intent ✓
+2026-06-04T02:28:04 TURN_ROUTED turn=sales reason=intent=buying_intent ✓
+2026-06-04T02:28:04 LEAD_SIGNALS buying=True score=90 stage=qualified
+2026-06-04T02:28:04 SALES_MODE_ACTIVE reason=turn=sales ✓
+2026-06-04T02:28:06 RESPONSE_VALIDATED turn=sales is_valid=True ✓
+
+2026-06-04T02:28:54 TELEGRAM_UPDATE text=Pakka bhayo, jadaan garna pathaidinus.
+2026-06-04T02:28:54 INTENT_DETECTED intent=general ✗
+2026-06-04T02:28:54 TURN_ROUTED turn=general_knowledge reason=default ✗
+2026-06-04T02:28:54 EMPLOYEE_REPLY_GENERATED sales_mode=False ✗
+
+2026-06-04T02:29:28 TELEGRAM_UPDATE text=Paisa kati dinu parchha?
+2026-06-04T02:29:28 INTENT_DETECTED intent=general ✗
+2026-06-04T02:29:28 TURN_ROUTED turn=general_knowledge ✗
+
+2026-06-04T02:30:13 TELEGRAM_UPDATE text=Maile mero sathi ko ma jadan garna refer gare malai commission kati auchha?
+2026-06-04T02:30:13 INTENT_DETECTED intent=general
+2026-06-04T02:30:13 TURN_ROUTED turn=general_knowledge
+
+2026-06-04T02:30:40 TELEGRAM_UPDATE text=Ke chai janakari chha ta?
+2026-06-04T02:30:40 TURN_ROUTED turn=general_knowledge
+
+2026-06-04T02:31:28 TELEGRAM_UPDATE text=7G router chahinchha mero jadan ma.
+2026-06-04T02:31:28 INTENT_DETECTED intent=general ✗
+2026-06-04T02:31:28 TURN_ROUTED turn=general_knowledge ✗
+
+2026-06-04T02:32:15 TELEGRAM_UPDATE text=Ani tapai AI ho bhannu bhako haina tapailai ta janakari hunuparne.
+2026-06-04T02:32:15 TURN_ROUTED turn=correction reason=user_correction ✓
+2026-06-04T02:32:17 RESPONSE_VALIDATED turn=correction is_valid=True ✓
+
+2026-06-04T02:32:32 TELEGRAM_UPDATE text=FTTH bhaneko ke ho?
+2026-06-04T02:32:32 TURN_ROUTED turn=general_knowledge
+
+2026-06-04T02:33:19 TELEGRAM_UPDATE text=secondary router lani chaahinchha. Kati mulya parchha ?
+2026-06-04T02:33:19 INTENT_DETECTED intent=pricing ✓
+2026-06-04T02:33:19 TURN_ROUTED turn=sales reason=intent=pricing ✓
+2026-06-04T02:33:21 RESPONSE_VALIDATED turn=sales is_valid=True
+
+2026-06-04T02:33:43 TELEGRAM_UPDATE text=Okay.
+2026-06-04T02:33:43 LANGUAGE_LOCK reason=sticky_short_input locked=True ✓
+2026-06-04T02:33:43 TURN_ROUTED turn=general_knowledge reason=default ✗ (should follow_up)
+
+SESSION STATE (throughout):
+  phone_collected=True pitch_count=8→10 language=nepali locked=True
+  memory keys: name, city, phone, package_interest

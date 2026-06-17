@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Phase 1 — Full Code Change Report | Vyapar AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page{size:A4;margin:12mm 11mm}
+*{box-sizing:border-box}
+body{font-family:Inter,"Noto Sans Devanagari",sans-serif;font-size:9pt;line-height:1.45;color:#111;max-width:210mm;margin:0 auto;padding:14px 16px 30px}
+h1{font-size:17pt;color:#0f3460;border-bottom:3px solid #e94560;padding-bottom:5px;margin:0 0 8px}
+h2{font-size:11.5pt;color:#16213e;margin:18px 0 8px;border-left:4px solid #e94560;padding-left:8px;page-break-after:avoid}
+h3{font-size:10pt;color:#0f3460;margin:12px 0 6px}
+.meta{background:#f0f4f8;padding:10px 12px;border-radius:5px;font-size:8.5pt;margin-bottom:12px}
+.badge{background:#16a34a;color:#fff;font-size:7.5pt;padding:2px 8px;border-radius:8px;font-weight:600}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:8pt}
+th,td{border:1px solid #cbd5e1;padding:5px 7px;text-align:left;vertical-align:top}
+th{background:#0f3460;color:#fff}
+tr:nth-child(even){background:#f8fafc}
+pre,.code{font-family:"JetBrains Mono",Consolas,monospace;font-size:7pt;line-height:1.35;white-space:pre-wrap;word-break:break-word;margin:6px 0;padding:8px 10px;border-radius:4px;border:1px solid #e2e8f0}
+.removed{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.added{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+.unchanged{background:#f8fafc;color:#334155}
+.label{font-size:7.5pt;font-weight:700;text-transform:uppercase;margin:8px 0 3px}
+.label-r{color:#b91c1c}.label-a{color:#15803d}.label-u{color:#475569}
+.diagram{font-family:"JetBrains Mono",monospace;font-size:7pt;background:#f8fafc;border:1px solid #e2e8f0;padding:10px;white-space:pre-wrap;line-height:1.35}
+.page-break{page-break-before:always}
+.footer{margin-top:20px;padding-top:8px;border-top:1px solid #cbd5e1;font-size:7.5pt;color:#64748b;text-align:center}
+ul,ol{margin:4px 0;padding-left:18px}li{margin:2px 0}
+</style>
+</head>
+<body>
+
+<h1>Phase 1 — Full Code Change Report</h1>
+<p><strong>Vyapar AI Universal AI Employee Platform</strong></p>
+<div class="meta">
+<p><strong>Status:</strong> <span class="badge">IMPLEMENTED</span> &nbsp;|&nbsp; <strong>Date:</strong> June 2, 2026</p>
+<p><strong>Goal:</strong> HONS-specific single-tenant MVP → multi-tenant-ready Universal AI Employee foundation</p>
+<p><strong>Principle:</strong> HONS is test tenant only (<code>COMPANY_ID=hons</code>). Code is industry-agnostic.</p>
+</div>
+
+<h2>1. Files Changed (8 files)</h2>
+<table>
+<tr><th>File</th><th>Lines Before → After</th><th>Summary</th></tr>
+<tr><td><code>company_manager.py</code></td><td>46 → 235</td><td>Central business abstraction layer (rewritten)</td></tr>
+<tr><td><code>business_settings.py</code></td><td>36 → 48</td><td>Hardcoded HONS removed; loads via company_manager</td></tr>
+<tr><td><code>products.py</code></td><td>70 → 67</td><td>Static PRODUCTS removed; dynamic by company_id</td></tr>
+<tr><td><code>ai_employee_engine.py</code></td><td>147 → 171</td><td>Tenant-aware COMPANY_ID routing</td></tr>
+<tr><td><code>main.py</code></td><td>249 → 277</td><td>Startup profile validation; GET / tenant status</td></tr>
+<tr><td><code>company_profiles.json</code></td><td>37 → 52</td><td>Enriched generic tenant schema</td></tr>
+<tr><td><code>env.example</code></td><td>36 → 30</td><td>COMPANY_ID added; stale BUSINESS_* removed</td></tr>
+<tr><td><code>README_DEPLOY.md</code></td><td>90 → 96</td><td>Tenant deployment docs</td></tr>
+</table>
+
+<h2>2. company_manager.py — REMOVED (entire old file)</h2>
+<div class="label label-r">Removed — 46 lines</div>
+<pre class="removed">import json
+import os
+
+COMPANY_FILE = "company_profiles.json"
+
+def load_company(company_id: str):
+    if not os.path.exists(COMPANY_FILE):
+        return None
+    with open(COMPANY_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data.get(company_id)
+
+def get_company_summary(company_id: str) -> str:
+    company = load_company(company_id)
+    if not company:
+        return ""
+    summary = f"""
+Company Name: {company.get("company_name")}
+...
+Products:
+"""
+    for product in company.get("products", []):
+        summary += f"\n- {product['name']} = NPR {product['price']} ..."
+    return summary.strip()</pre>
+
+<h2>2b. company_manager.py — ADDED (new abstraction layer)</h2>
+<div class="label label-a">Added — key public API (235 lines total)</div>
+<pre class="added">class CompanyProfileError(LookupError): ...
+
+def get_active_company_id() -> str:
+    return os.getenv("COMPANY_ID", "hons").strip() or "hons"
+
+def _load_all_profiles() -> dict[str, Any]:
+    # Phase 1: JSON file. Phase 2: swap for DB repository.
+    ...
+
+def get_company(company_id: str) -> dict[str, Any] | None: ...
+def load_company(company_id: str) -> dict[str, Any] | None:  # backward-compat alias
+def require_company(company_id: str) -> dict[str, Any]: ...
+def get_company_industry(company_id: str) -> str: ...
+def get_company_contact(company_id: str) -> dict[str, str]: ...
+def get_company_policies(company_id: str) -> dict[str, str]: ...
+def get_company_rules(company_id: str) -> list[str]: ...
+def get_catalog_label(company_id: str) -> str: ...
+def get_company_products(company_id: str) -> list[dict[str, Any]]: ...
+def get_company_summary(company_id: str) -> str: ...</pre>
+
+<div class="page-break"></div>
+
+<h2>3. business_settings.py — REMOVED</h2>
+<div class="label label-r">Removed — hardcoded HONS constants</div>
+<pre class="removed">BUSINESS_NAME = "Himalayan Online Service Pvt. Ltd."
+BUSINESS_TYPE = "Internet Service Provider"
+BUSINESS_LOCATION = "Head Kamal Pokhari, Kathmandu, Nepal"
+BUSINESS_PHONE = "+977-1-4541063"
+BUSINESS_TOLL_FREE = "16600149520"
+BUSINESS_EMAIL = "info@hons.com.np"
+SUPPORT_HOURS = "6:00 AM to 7:00 PM"
+INSTALLATION_CHARGE = "Free"
+ROUTER_ONU = "Free Router / ONU"
+
+def business_context_to_prompt() -> str:
+    return f"""
+Business Profile:
+- Company Name: {BUSINESS_NAME}
+...
+Important Business Rules:
+- Always identify the company as Himalayan Online Service Pvt. Ltd. when needed.
+- Do not invent package prices.
+...""".strip()</pre>
+
+<h2>3b. business_settings.py — ADDED</h2>
+<div class="label label-a">Added — dynamic tenant prompt builder</div>
+<pre class="added">from company_manager import (
+    get_company_contact, get_company_industry,
+    get_company_policies, get_company_rules, require_company,
+)
+
+def business_context_to_prompt(company_id: str) -> str:
+    company = require_company(company_id)
+    contact = get_company_contact(company_id)
+    policies = get_company_policies(company_id)
+    rules = get_company_rules(company_id)
+    lines = [
+        "Business Profile:",
+        f"- Company ID: {company.get('company_id', company_id)}",
+        f"- Company Name: {company.get('company_name') or company_id}",
+        f"- Business Type: {company.get('business_type', 'N/A')}",
+        f"- Industry: {get_company_industry(company_id)}",
+        f"- Location: {company.get('location', 'N/A')}",
+        # + contact, policies, rules (all from JSON)
+    ]
+    return "\n".join(lines).strip()</pre>
+
+<h2>4. products.py — REMOVED</h2>
+<div class="label label-r">Removed — static PRODUCTS list + HONS-specific fallback</div>
+<pre class="removed">PRODUCTS = [
+    {"name": "100 Mbps Internet Package", "price": "NPR 10,000",
+     "description": "...Himalayan Online Service...", "tags": [...]},
+    # 150 Mbps, 200 Mbps ...
+]
+
+def search_products(query: str, top_n: int = 3):
+    for product in PRODUCTS:  # static iteration
+        ...
+
+def products_to_prompt(items):
+    if not items:
+        return """
+Available internet packages:
+- 100 Mbps: NPR 10,000 for 13 months
+..."""</pre>
+
+<h2>4b. products.py — ADDED</h2>
+<div class="label label-a">Added — tenant-scoped dynamic catalog</div>
+<pre class="added">from company_manager import (
+    get_active_company_id, get_catalog_label,
+    get_company_policies, get_company_products,
+)
+
+def search_products(query: str, top_n: int = 3, company_id: str | None = None):
+    tenant_id = company_id or get_active_company_id()
+    for product in get_company_products(tenant_id):
+        # same scoring logic, dynamic source
+        ...
+
+def products_to_prompt(items, company_id: str | None = None):
+    tenant_id = company_id or get_active_company_id()
+    catalog = get_catalog_label(tenant_id)  # generic label, not "internet packages"
+    if not items:
+        all_products = get_company_products(tenant_id)
+        # fallback from JSON, not hardcoded Mbps lines</pre>
+
+<div class="page-break"></div>
+
+<h2>5. ai_employee_engine.py — REMOVED / CHANGED</h2>
+<div class="label label-r">Removed</div>
+<pre class="removed"># No company_manager import
+# generate_employee_reply(user_id, text) — no company_id param
+
+product_items = search_products(clean_text, top_n=3)
+system_prompt = compose_system_prompt(
+    business_block=business_context_to_prompt(),  # no company_id
+    product_block=products_to_prompt(product_items),
+)</pre>
+
+<div class="label label-a">Added</div>
+<pre class="added">from company_manager import CompanyProfileError, get_active_company_id, require_company
+
+_UNCONFIGURED_REPLY = "This AI employee is not configured yet. Please contact support."
+
+def _resolve_company_id(company_id: str | None = None) -> str: ...
+def _ensure_company_configured(company_id: str) -> bool: ...
+
+async def generate_employee_reply(user_id: str, text: str, company_id: str | None = None):
+    tenant_id = _resolve_company_id(company_id)
+    # memory + direct recall unchanged (works without tenant)
+
+    if not _ensure_company_configured(tenant_id):
+        save_chat_turn(user_id, "assistant", _UNCONFIGURED_REPLY)
+        return _UNCONFIGURED_REPLY
+
+    product_items = search_products(clean_text, top_n=3, company_id=tenant_id)
+    system_prompt = compose_system_prompt(
+        business_block=business_context_to_prompt(tenant_id),
+        product_block=products_to_prompt(product_items, company_id=tenant_id),
+    )
+    logger.info("EMPLOYEE_REPLY_GENERATED user_id=%s company_id=%s", user_id, tenant_id)</pre>
+
+<h2>6. main.py — REMOVED / ADDED</h2>
+<div class="label label-r">Removed from lifespan</div>
+<pre class="removed">logger.info("APP_STARTUP mode=%s port=%s", TELEGRAM_MODE, PORT)
+
+@app.get("/")
+async def root():
+    return {"service": APP_NAME, "ok": True, "mode": TELEGRAM_MODE}</pre>
+
+<div class="label label-a">Added to lifespan + root</div>
+<pre class="added">from company_manager import CompanyProfileError, get_active_company_id, require_company
+
+company_id = get_active_company_id()
+try:
+    company = require_company(company_id)
+    logger.info("COMPANY_PROFILE_LOADED company_id=%s industry=%s name=%s",
+                company_id, company.get("industry"), company.get("company_name"))
+except CompanyProfileError:
+    logger.error("COMPANY_PROFILE_MISSING company_id=%s — AI replies will return configuration error", company_id)
+
+logger.info("APP_STARTUP mode=%s port=%s company_id=%s", TELEGRAM_MODE, PORT, company_id)
+
+@app.get("/")
+async def root():
+    company_id = get_active_company_id()
+    try:
+        require_company(company_id); company_loaded = True
+    except CompanyProfileError:
+        company_loaded = False
+    return {"service": APP_NAME, "ok": True, "mode": TELEGRAM_MODE,
+            "company_id": company_id, "company_loaded": company_loaded}</pre>
+
+<h2>7. company_profiles.json — BEFORE → AFTER</h2>
+<div class="label label-r">Before (minimal, no industry/rules/tags)</div>
+<pre class="removed">{
+  "hons": {
+    "company_name": "Himalayan Online Service Pvt. Ltd.",
+    "products": [{"name": "100 Mbps", "price": 10000, "duration_months": 13}],
+    "installation_charge": "Free", "router": "Free", "onu": "Free"
+  }
+}</pre>
+
+<div class="label label-a">After (generic multi-industry schema)</div>
+<pre class="added">{
+  "hons": {
+    "company_id": "hons",
+    "industry": "isp",
+    "currency": "NPR",
+    "catalog_label": "products and services",
+    "policies": {"installation_charge": "Free", "router": "Free", "onu": "Free"},
+    "rules": ["Do not invent prices...", "..."],
+    "products": [{
+      "name": "100 Mbps Internet Package",
+      "price": 10000, "duration_months": 13,
+      "tags": ["100mbps", "internet", "package"],
+      "description": "100 Mbps connectivity package..."
+    }]
+  }
+}</pre>
+
+<div class="page-break"></div>
+
+<h2>8. env.example — REMOVED / ADDED</h2>
+<div class="label label-r">Removed (unused vars)</div>
+<pre class="removed">BUSINESS_NAME=Vyapar AI Employee
+BUSINESS_TYPE=AI Employee Platform
+SUPPORT_PHONE=+977-XXXXXXXXXX
+SUPPORT_EMAIL=support@example.com
+SUPPORT_HOURS=Sun-Fri, 9 AM to 6 PM Nepal Time
+ADMIN_USERNAME=Khemraj</pre>
+
+<div class="label label-a">Added</div>
+<pre class="added">COMPANY_ID=hons
+# COMPANY_PROFILES_FILE=/path/to/company_profiles.json</pre>
+
+<h2>9. Architecture After Phase 1</h2>
+<div class="diagram">                    COMPANY_ID (env)
+                           │
+                           ▼
+              company_profiles.json  ◄── SSOT (Phase 1)
+                           │
+                           ▼
+              ┌────────────────────────────┐
+              │     company_manager.py    │  ◄── Central Business Layer
+              │  get_company()            │      (DB-swappable in Phase 2)
+              │  get_company_products()   │
+              │  get_company_contact()    │
+              │  get_company_rules()      │
+              │  require_company()        │
+              └─────────────┬──────────────┘
+                            │
+         ┌──────────────────┼──────────────────┐
+         ▼                  ▼                  ▼
+ business_settings    products.py      (future: CRM, leads)
+         │                  │
+         └────────┬─────────┘
+                  ▼
+        ai_employee_engine.py
+         ├── memory.py          (unchanged)
+         ├── intent_engine.py   (unchanged)
+         ├── knowledge_base.py  (unchanged)
+         ├── openai_engine.py   (unchanged)
+         └── prompts.py         (unchanged)
+                  │
+                  ▼
+             main.py → Telegram webhook/polling (unchanged)</div>
+
+<h2>10. Testing Checklist</h2>
+<table>
+<tr><th>#</th><th>Test</th><th>Command / Action</th><th>Expected</th></tr>
+<tr><td>1</td><td>Profile loaded at startup</td><td>Start app with COMPANY_ID=hons</td><td>Log: COMPANY_PROFILE_LOADED</td></tr>
+<tr><td>2</td><td>Root tenant status</td><td>GET /</td><td>company_id=hons, company_loaded=true</td></tr>
+<tr><td>3</td><td>Invalid tenant</td><td>COMPANY_ID=invalid + message</td><td>"not configured yet" reply</td></tr>
+<tr><td>4</td><td>Memory preserved</td><td>"Mero naam X ho" then "Mero naam ke ho?"</td><td>Direct recall works</td></tr>
+<tr><td>5</td><td>Product search</td><td>"100 mbps price?" via Telegram</td><td>Product from JSON in prompt/reply</td></tr>
+<tr><td>6</td><td>Telegram webhook</td><td>POST /telegram/webhook</td><td>Reply sent, no crash</td></tr>
+<tr><td>7</td><td>Health check</td><td>GET /healthz</td><td>{"ok":true,"database":"healthy"}</td></tr>
+<tr><td>8</td><td>Second tenant</td><td>Add hospital key to JSON, deploy with new COMPANY_ID</td><td>Different business context</td></tr>
+</table>
+
+<h2>11. Rollback Plan</h2>
+<ol>
+<li>Revert these 8 files to pre-Phase-1 versions (git checkout or backup restore)</li>
+<li>Remove <code>COMPANY_ID</code> from Render env (old code ignored it)</li>
+<li>No database migration was applied — memory tables unchanged</li>
+<li>Restart service after rollback</li>
+</ol>
+
+<h2>12. Remaining Technical Debt</h2>
+<table>
+<tr><th>Item</th><th>Phase</th></tr>
+<tr><td>JSON file SSOT — no hot reload, no admin CRUD</td><td>Phase 2 → DB</td></tr>
+<tr><td>No company_id column on memory tables</td><td>Phase 2</td></tr>
+<tr><td>Sync SQLAlchemy in async handlers</td><td>Phase 2</td></tr>
+<tr><td>Blocking webhook (waits for OpenAI)</td><td>Phase 2</td></tr>
+<tr><td>company_profile.json duplicate file (unused)</td><td>Cleanup</td></tr>
+<tr><td>No automated tests</td><td>Phase 2</td></tr>
+<tr><td>Keyword-only product/KB search</td><td>Phase 3</td></tr>
+<tr><td>No lead engine / workflow / CRM</td><td>Phase 3</td></tr>
+</table>
+
+<h2>13. Recommended Phase 2</h2>
+<ol>
+<li><strong>DB tenant model</strong> — companies, company_products, company_knowledge tables</li>
+<li><strong>Repository swap</strong> — replace _load_all_profiles() without changing public API</li>
+<li><strong>company_id on memory</strong> — tenant-scoped user data</li>
+<li><strong>Alembic migrations</strong></li>
+<li><strong>Admin API</strong> — authenticated tenant CRUD (not full panel)</li>
+<li><strong>Background worker</strong> — async webhook processing</li>
+<li><strong>Second test tenant</strong> — hospital_demo industry seed in JSON/DB</li>
+</ol>
+
+<h2>14. Unchanged Files (Preserved)</h2>
+<p><code>memory.py</code> · <code>memory_db.py</code> · <code>memory_extractor.py</code> · <code>openai_engine.py</code> · <code>intent_engine.py</code> · <code>knowledge_base.py</code> · <code>prompts.py</code> · Telegram webhook/polling logic in <code>main.py</code></p>
+
+<div class="footer">
+Vyapar AI Employee Platform — Phase 1 Full Code Change Report · June 2, 2026 · v2.0 (with actual diffs)
+</div>
+</body>
+</html>

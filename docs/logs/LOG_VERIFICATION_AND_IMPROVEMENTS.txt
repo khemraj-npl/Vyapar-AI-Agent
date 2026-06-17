@@ -1,0 +1,106 @@
+Vyapar AI — Production Log Verification & Improvements
+Session: user_id=2071979418 | 2026-06-04 02:26–02:33 UTC
+Deploy: 00:41–00:44 UTC (3 deploys, service live)
+
+================================================================================
+1. DEPLOY STATUS
+================================================================================
+✓ Service started — APP_STARTUP company_id=hons
+✓ Webhook set — TELEGRAM_WEBHOOK_SET
+✓ P0 fixes PARTIALLY live (see below)
+
+================================================================================
+2. WHAT IS FIXED (confirmed in logs)
+================================================================================
+✓ buying_intent: "La 100 mbps ko 13 mahinako jadan..." → intent=buying_intent, turn=sales
+✓ pricing: "secondary router... Kati mulya parchha?" → intent=pricing, turn=sales
+✓ language lock: locked=True, sticky on emoji/Okay
+✓ correction: "tapai AI ho... janakari hunuparne" → turn=correction, is_valid=True
+✓ validator: no RESPONSE_VALIDATOR_FALLBACK in this session
+✓ sales reply: turn=sales is_valid=True, SALES_MODE_ACTIVE
+
+================================================================================
+3. WHAT IS STILL BROKEN
+================================================================================
+
+BUG-A: Qualified lead context dropped after first sales turn
+----------------------------------------------------------------
+Messages AFTER stage=qualified still route to general_knowledge:
+
+  "Pakka bhayo, jadaan garna pathaidinus"  → general ✗ (should sales/follow_up)
+  "Paisa kati dinu parchha?"               → general ✗ (should pricing/sales)
+  "7G router chahinchha mero jadan ma"     → general ✗ (should sales/support)
+
+Root cause: turn_router does NOT read session.lead_stage or lead context.
+Once turn=general, suppress_lead=True kills sales mode.
+
+Fix: In route_turn(), if session.lead_stage in (interested, qualified, hot)
+     AND text matches continuation patterns → force turn=sales
+
+BUG-B: Missing Nepali verb patterns
+----------------------------------------------------------------
+  chahinchha  → not matched (only chahiy[oō] in code)
+  jadan/jadaan, pathaidinus, paisa kati dinu parchha
+  Pakka bhayo → not in AFFIRMATIVE_PATTERNS
+
+Fix: intent_engine + turn_router patterns:
+  chahinchha, chaahinchha, jadan, pathaidinu, paisa.*kati, pakka\s+bhayo
+
+BUG-C: "Okay." → general_knowledge not follow_up
+----------------------------------------------------------------
+AFFIRMATIVE_PATTERNS missing: okay, ok, pakka
+
+Fix: turn_router AFFIRMATIVE_PATTERNS add ^okay\.?$, ^ok\.?$, pakka
+
+BUG-D: secondary router → sales (wrong turn)
+----------------------------------------------------------------
+"secondary router kati mulya parchha" → sales ( pitches 100 Mbps package)
+Should → unknown_product (price not in catalog)
+
+Fix: UNKNOWN_PRODUCT check BEFORE sales force in turn_router
+
+BUG-E: phone_collected=True + repeated_phone_request on complaint
+----------------------------------------------------------------
+User complaint sanitized for phone ask even on general_knowledge turn.
+Memory has phone key — may be valid OR stale from old bug.
+
+Fix: Verify phone in memory is valid 97/98 mobile; reset stale sessions
+
+BUG-F: pitch_count=10 — repetition fatigue
+----------------------------------------------------------------
+User: "Malai chaaso chaahinchha?" → duplicate pitch overlap=0.85
+LLM keeps repeating package despite pitch_count rule.
+
+Fix: session_state_to_prompt stronger; after pitch_count>=2 force no Mbps in prompt
+
+================================================================================
+4. PRIORITY FIX LIST (next deploy)
+================================================================================
+P0-1  Lead-stage continuation routing (qualified → stay sales)
+P0-2  chahinchha, paisa kati, pakka bhayo, jadan patterns
+P0-3  Okay → follow_up turn
+P1-1  secondary router → unknown_product before sales
+P1-2  commission/FTTH → general_knowledge with direct answer hints
+P2-1  Reset pitch_count after correction turn
+P2-1  Session phone audit (invalid phone → phone_collected=False)
+
+================================================================================
+5. SECURITY WARNING
+================================================================================
+⚠ Bot token visible in Render logs you pasted.
+  Action: Revoke token via @BotFather → /revoke → update Render env → redeploy.
+
+================================================================================
+6. TEST AFTER NEXT FIX
+================================================================================
+Send in order (fresh or same session):
+  1. La 100 mbps ko 13 mahinako jadan garna pathaidinus
+  2. Pakka bhayo, jadaan garna pathaidinus     → expect turn=sales
+  3. Paisa kati dinu parchha?                  → expect turn=sales/pricing
+  4. Okay.                                     → expect turn=follow_up
+  5. secondary router kati parchha?            → expect turn=unknown_product
+
+Expected logs:
+  TURN_ROUTED turn=sales reason=lead_stage=qualified
+  TURN_ROUTED turn=follow_up reason=affirmative
+  TURN_ROUTED turn=unknown_product reason=unknown_product_price

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Recent Test Report — Vyapar AI HONS | June 3, 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page{size:A4;margin:12mm 11mm}
+body{font-family:Inter,"Noto Sans Devanagari",sans-serif;font-size:9pt;line-height:1.45;color:#111;max-width:210mm;margin:0 auto;padding:14px 16px 28px}
+h1{font-size:17pt;color:#0f3460;border-bottom:3px solid #e94560;padding-bottom:5px;margin:0}
+h2{font-size:11.5pt;color:#16213e;margin:16px 0 7px;border-left:4px solid #e94560;padding-left:8px;page-break-after:avoid}
+h3{font-size:9.5pt;color:#0f3460;margin:10px 0 4px}
+.meta{background:#f0f4f8;padding:10px 12px;border-radius:5px;font-size:8.5pt;margin:10px 0}
+.badge-fail{background:#dc2626;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-pass{background:#16a34a;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-partial{background:#d97706;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+table{width:100%;border-collapse:collapse;margin:7px 0;font-size:8pt}
+th,td{border:1px solid #cbd5e1;padding:4px 7px;text-align:left;vertical-align:top}
+th{background:#0f3460;color:#fff}
+tr:nth-child(even){background:#f8fafc}
+.pass{color:#16a34a;font-weight:700}
+.fail{color:#dc2626;font-weight:700}
+.partial{color:#d97706;font-weight:600}
+.verdict{background:#fef2f2;border:2px solid #dc2626;padding:12px 14px;border-radius:6px;margin:14px 0;font-size:9.5pt}
+.summary{background:#fef3c7;border-left:4px solid #d97706;padding:10px 12px;margin:10px 0;font-size:9pt}
+.page-break{page-break-before:always}
+ul,ol{margin:4px 0;padding-left:18px}li{margin:2px 0}
+.footer{margin-top:18px;padding-top:8px;border-top:1px solid #cbd5e1;font-size:7.5pt;color:#64748b;text-align:center}
+code{font-family:"JetBrains Mono",Consolas,monospace;font-size:7pt;background:#f1f5f9;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+
+<h1>Recent Test Report — Vyapar AI (HONS)</h1>
+<p><strong>Telegram Production Test Session</strong></p>
+
+<div class="meta">
+<p><strong>Date:</strong> June 3, 2026 &nbsp;|&nbsp; <strong>Channel:</strong> Telegram &nbsp;|&nbsp; <strong>Tenant:</strong> HONS ISP</p>
+<p><strong>Session scope:</strong> ~30+ messages — Banepa connection, packages, negotiation, escalation, FAQ</p>
+<p><strong>Verdict:</strong> <span class="badge-fail">NOT PRODUCTION READY</span> &nbsp; <span class="badge-partial">MVP / Demo Level 2.5</span></p>
+</div>
+
+<div class="verdict">
+<strong>Executive summary:</strong> Pipeline is running and catalog prices are often correct, but the bot cannot behave as a reliable AI employee. Memory gaps, repetitive sales pitches, wrong answers to direct questions, and language inconsistency dominate the session.
+</div>
+
+<div class="summary">
+<strong>One-line:</strong> Bot can <em>read</em> company data; it cannot <em>converse</em> like an employee under real Nepali Telegram usage.
+</div>
+
+<h2>1. Overall Results</h2>
+<table>
+<tr><th>Area</th><th>Result</th></tr>
+<tr><td>Pipeline / responses</td><td class="pass">Pass</td></tr>
+<tr><td>Product facts (100/150/200 Mbps catalog)</td><td class="partial">Partial</td></tr>
+<tr><td>Lead capture (name / phone)</td><td class="partial">Partial</td></tr>
+<tr><td>Sales employee UX</td><td class="fail">Fail</td></tr>
+<tr><td>Production-ready</td><td class="fail">Fail</td></tr>
+</table>
+
+<h2>2. Tests Passed</h2>
+<table>
+<tr><th>#</th><th>Test</th><th>Result</th></tr>
+<tr><td>1</td><td><code>Banepa ma naya jodanu</code> → asks name, phone, speed</td><td class="pass">Pass</td></tr>
+<tr><td>2</td><td><code>Mero naam Khemraj Adhikari</code> remembered</td><td class="pass">Pass</td></tr>
+<tr><td>3</td><td><code>200 Mbps ko kati?</code> → NPR 15,000 / 13 months</td><td class="pass">Pass</td></tr>
+<tr><td>4</td><td><code>2+2-0 kati?</code> → 4</td><td class="pass">Pass</td></tr>
+<tr><td>5</td><td><code>15000 ma 12 mahina</code> → correctly says 13 months only</td><td class="pass">Pass</td></tr>
+<tr><td>6</td><td><code>Tapai HONS ko sahayak?</code> → company + contact</td><td class="pass">Pass</td></tr>
+<tr><td>7</td><td><code>Subisu sasto</code> competitor mention + own offer</td><td class="partial">Partial</td></tr>
+</table>
+
+<h2>3. Failures by Category</h2>
+
+<h3>A. Memory &amp; State — Critical</h3>
+<table>
+<tr><th>Symptom</th><th>Example from test</th></tr>
+<tr><td>Phone given, asked again</td><td><code>Number maile aghi deko</code> → “agadi paeKO chaina”</td></tr>
+<tr><td>Double reply same timestamp</td><td>11:46 — Nepali + English Hello both sent</td></tr>
+<tr><td>Hallucinated phone</td><td>Bot uses <code>9898989898</code> when user did not provide it</td></tr>
+<tr><td>Wrong memory field</td><td>Coaching message → saved as AI Employee Platform business type</td></tr>
+</table>
+<p><strong>Cause:</strong> No session state; memory writes without validation; phone_collected not tracked.</p>
+
+<h3>B. Repetitive Sales Loop — Critical</h3>
+<p>Same block repeated across many turns:</p>
+<pre>100 Mbps NPR 10,000 … phone/WhatsApp dinuhos</pre>
+<p>Seen on: competitor questions, discount, Facebook 500 Mbps claim, “ali ramro bujha”, senior escalation, clarifications.</p>
+<p><strong>Cause:</strong> Sales mode stuck ON; no response validator; CTA in every prompt.</p>
+
+<h3>C. Wrong or Incomplete Answers — High</h3>
+<table>
+<tr><th>User asked</th><th>Bot did</th></tr>
+<tr><td>Kun net / company naam?</td><td>Package pitch or full catalog dump</td></tr>
+<tr><td>Tapaiko naam ke ho?</td><td>“Himalayan Online Service ko pratinidhi” — awkward identity</td></tr>
+<tr><td>Facebook 500 Mbps 6 month NPR 6000</td><td>“Thaha chaina” + same 200 Mbps pitch repeated</td></tr>
+<tr><td>Nepal ma kati internet company?</td><td>Competitor list + unsolicited 500 Mbps mention</td></tr>
+<tr><td>Discount 100 Mbps 1 year?</td><td>“Discount chaina” + repeat options text</td></tr>
+<tr><td>Senior le sodhera 500 Mbps bhannus</td><td>Contact given + asks phone again same turn</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h3>D. Language &amp; Tone — High</h3>
+<ul>
+<li>Nepali ↔ English mixed in same session (<code>Ghari Nepali ghari angreji</code>)</li>
+<li>Robotic closing every turn: “Aru kura chahincha bhane puchna/sodhna saknuhunchha”</li>
+<li>User: <code>Malai sikaunu bhako ki afailai?</code> — bot lectures user instead of adapting</li>
+</ul>
+
+<h3>E. UX / Product — Medium</h3>
+<ul>
+<li><code>Option ma click bhayena</code> — bot sends text lists, no Telegram inline keyboard buttons</li>
+<li>User asks for process links / advanced employee flow — not supported</li>
+</ul>
+
+<h3>F. Escalation / Team Wording — Medium</h3>
+<ul>
+<li>Senior/sodha → company contact sometimes correct</li>
+<li>Still asks user phone in same turn after giving office number</li>
+<li>Risk of “tapainko team” vs “hamro team” confusion in long threads</li>
+</ul>
+
+<h2>4. Failure Volume (Estimated)</h2>
+<table>
+<tr><th>Category</th><th>~Incidents</th></tr>
+<tr><td>Repeat pitch / phone CTA</td><td>15+</td></tr>
+<tr><td>Memory / phone forget</td><td>5+</td></tr>
+<tr><td>Wrong question answered</td><td>8+</td></tr>
+<tr><td>Language inconsistency</td><td>4+</td></tr>
+<tr><td>Hallucination (phone, competitors)</td><td>3+</td></tr>
+<tr><td>Meta / coaching ignored</td><td>3+</td></tr>
+<tr><td>UI — no clickable options</td><td>2+</td></tr>
+</table>
+
+<h2>5. Root Causes (Architecture)</h2>
+<ol>
+<li>No <strong>turn router</strong> (intro / info / sales / repair / escalate)</li>
+<li>No <strong>conversation state</strong> (phone_collected, pitch_sent, phase)</li>
+<li>No <strong>response validator</strong> (block repeat pitch, block phone re-ask)</li>
+<li>Single-turn LLM + long prompt → template loop</li>
+<li>No Telegram inline keyboards for package selection</li>
+</ol>
+<p>Phase 2 deploy improved logs; this test shows <strong>UX still fails</strong>.</p>
+
+<h2>6. Priority Fix List</h2>
+<table>
+<tr><th>P</th><th>Fix</th><th>Addresses</th></tr>
+<tr><td><strong>P0</strong></td><td>Session state: phone, name, pitch_count — no re-ask if collected</td><td>Repeat phone ask</td></tr>
+<tr><td><strong>P0</strong></td><td>Turn router: info question → answer only, no catalog</td><td>Company name, kun net</td></tr>
+<tr><td><strong>P0</strong></td><td>Response validator: &gt;70% overlap → regenerate</td><td>Repeat after clarification</td></tr>
+<tr><td><strong>P1</strong></td><td>Memory validator: block bad name/phone extraction</td><td>9898989898 hallucination</td></tr>
+<tr><td><strong>P1</strong></td><td>Language lock: user Nepali → reply Nepali only</td><td>Mixed language</td></tr>
+<tr><td><strong>P1</strong></td><td>Escalation: company contact OR user phone, not both</td><td>Senior sodha flow</td></tr>
+<tr><td><strong>P2</strong></td><td>Telegram inline keyboard (100/150/200 Mbps)</td><td>Click bhayena</td></tr>
+<tr><td><strong>P2</strong></td><td>Meta turn handler for coaching / repair</td><td>Sikaunu vs afailai</td></tr>
+</table>
+
+<h2>7. Retest Checklist (After P0)</h2>
+<ol>
+<li><code>Banepa naya jodanu</code> → name, phone, speed — no repeat ask</li>
+<li><code>Kun net ho yo?</code> → HONS name only</li>
+<li><code>500 Mbps Facebook</code> → no pitch repeat; escalation script</li>
+<li><code>Number aghi deko</code> → bot remembers</li>
+<li><code>Senior sodha</code> → contact only</li>
+<li>Nepali only after language complaint</li>
+<li><code>Discount?</code> → direct answer</li>
+<li><code>2+2-0</code> → 4</li>
+<li><code>Subisu sasto</code> → competitor handling</li>
+<li>Package options → inline buttons (P2)</li>
+</ol>
+
+<h2>8. Maturity Rating</h2>
+<p><strong>Level 2–2.5 (Functional MVP)</strong> — not ready for paying HONS customers until P0 fixes ship.</p>
+
+<div class="footer">
+Vyapar AI Employee — Recent Test Report — June 3, 2026 — Telegram HONS session
+</div>
+
+</body>
+</html>

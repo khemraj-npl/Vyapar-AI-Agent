@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Vyapar AI Employee — Independent Architecture Audit</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page{size:A4;margin:12mm 11mm}
+body{font-family:Inter,"Noto Sans Devanagari",sans-serif;font-size:9pt;line-height:1.45;color:#111;max-width:210mm;margin:0 auto;padding:14px 16px 28px}
+h1{font-size:17pt;color:#0f3460;border-bottom:3px solid #e94560;padding-bottom:5px;margin:0}
+h2{font-size:11.5pt;color:#16213e;margin:16px 0 7px;border-left:4px solid #e94560;padding-left:8px;page-break-after:avoid}
+h3{font-size:9.5pt;color:#0f3460;margin:10px 0 4px}
+.meta{background:#f0f4f8;padding:10px 12px;border-radius:5px;font-size:8.5pt;margin:10px 0}
+.badge{background:#2563eb;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-warn{background:#d97706;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-crit{background:#dc2626;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-ok{background:#16a34a;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+table{width:100%;border-collapse:collapse;margin:7px 0;font-size:8pt}
+th,td{border:1px solid #cbd5e1;padding:4px 7px;text-align:left;vertical-align:top}
+th{background:#0f3460;color:#fff}
+tr:nth-child(even){background:#f8fafc}
+.crit{color:#dc2626;font-weight:700}
+.high{color:#d97706;font-weight:600}
+pre{font-family:"JetBrains Mono",Consolas,monospace;font-size:6.5pt;background:#f1f5f9;padding:8px 10px;border-radius:4px;border:1px solid #e2e8f0;white-space:pre-wrap;line-height:1.25}
+.diagram{font-family:"JetBrains Mono",monospace;font-size:6.5pt;background:#f8fafc;border:1px solid #e2e8f0;padding:9px;white-space:pre-wrap;line-height:1.2}
+.verdict{background:#fef3c7;border:2px solid #d97706;padding:12px 14px;border-radius:6px;margin:14px 0;font-size:9.5pt}
+.cto{background:#eff6ff;border-left:4px solid #2563eb;padding:10px 12px;margin:10px 0;font-size:9pt}
+.page-break{page-break-before:always}
+ul,ol{margin:4px 0;padding-left:18px}li{margin:2px 0}
+.footer{margin-top:18px;padding-top:8px;border-top:1px solid #cbd5e1;font-size:7.5pt;color:#64748b;text-align:center}
+code{font-family:"JetBrains Mono",Consolas,monospace;font-size:7pt;background:#f1f5f9;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+
+<h1>Vyapar AI Employee</h1>
+<p><strong>Independent Architecture Audit — Executive Summary</strong></p>
+
+<div class="meta">
+<p><strong>Review type:</strong> Production readiness assessment (Principal Architect / LLM / Memory / Conversation AI)</p>
+<p><strong>Date:</strong> June 3, 2026</p>
+<p><strong>Maturity rating:</strong> <span class="badge-warn">Level 2.5</span> Functional MVP → Early Production</p>
+<p><strong>Diagnosis verdict:</strong> <span class="badge-ok">Mostly Correct</span> — missing conversation brain; hypothesis incomplete</p>
+</div>
+
+<div class="verdict">
+<strong>Bottom line:</strong> The system logs leads well and sometimes remembers names, but it is not a coordinated AI employee. Current architecture is: <em>regex extractors → SQL persistence → prompt concatenation → hope the LLM behaves</em>. That demos; it does not reliably sell or converse in Nepali Telegram at production quality.
+</div>
+
+<h2>1. System Under Review</h2>
+<p>Telegram-based AI employee for Nepali ISP/business use. Components: Intent Engine, Lead Engine, Memory, Knowledge Base, Product Search, Company Profile, Prompt Builder, OpenAI, CRM/leads, Render deployment.</p>
+
+<p><strong>Production logs confirm working:</strong> LEAD_SIGNALS_DETECTED, LEAD_UPSERTED, EMPLOYEE_REPLY_GENERATED (and SALES_MODE_ACTIVE after Phase 2 fixes when deployed).</p>
+
+<p><strong>User-visible failures:</strong> inconsistent memory, persona drift (sales / FAQ / Wikipedia / memory bot), weak sales conversion, pitch repetition, conversation repair failures, name corruption.</p>
+
+<h2>2. Task 1 — Evaluate Your Diagnosis</h2>
+<h3>Verdict: Mostly Correct</h3>
+<table>
+<tr><th>Your claim</th><th>Assessment</th></tr>
+<tr><td>Not Render/GitHub/Cursor/OpenAI model quality</td><td>Mostly true — orchestration failure</td></tr>
+<tr><td>Missing conversation brain</td><td>Correct — <code>ai_employee_engine.py</code> is linear, not a controller</td></tr>
+<tr><td>Missing State / Persona / Memory Validation / Repair / Sales Controller / Goal Tracker</td><td>Correct — not first-class modules</td></tr>
+<tr><td>Lead engine working = architecture OK</td><td>Incorrect — CRM logging ≠ sales behavior</td></tr>
+</table>
+
+<p><strong>Under-weighted in your hypothesis:</strong> single-turn LLM; unvalidated regex memory; prompt overload; no response validator; partial deploy drift.</p>
+
+<h2>3. Task 2 — Real Root Causes</h2>
+<table>
+<tr><th>#</th><th>Root cause</th><th>Evidence</th></tr>
+<tr><td>RC-1</td><td>No conversation orchestrator</td><td>One function runs entire pipeline; no goal/phase object</td></tr>
+<tr><td>RC-2</td><td>Single-turn LLM + prompt stuffing</td><td><code>openai_engine.py</code>: only current message as input</td></tr>
+<tr><td>RC-3</td><td>Memory write eagerly, trust blindly</td><td><code>extract_name</code> matches <code>i am X</code> → "Indian I Am Nepali" bug</td></tr>
+<tr><td>RC-4</td><td>Persona = prompt text only</td><td>7+ prompt blocks compete every turn</td></tr>
+<tr><td>RC-5</td><td>Sales mode = logging flag</td><td>Bool + instructions; no enforced playbook</td></tr>
+<tr><td>RC-6</td><td>Lead CRM decoupled from dialogue</td><td>Score/stage stored; no next-action planner</td></tr>
+<tr><td>RC-7</td><td>No conversation repair layer</td><td>"Puchna haina, sodhna bhannus" not handled</td></tr>
+<tr><td>RC-8</td><td>Generic knowledge base</td><td>Platform docs, not tenant HONS FAQs</td></tr>
+<tr><td>RC-9</td><td>Release discipline gaps</td><td>Partial deploys; no CI golden-path tests</td></tr>
+</table>
+
+<h3>Production evidence (June 3 thread)</h3>
+<table>
+<tr><th>User message</th><th>Failure</th><th>Cause</th></tr>
+<tr><td>Mero naam khemraj adhikari ho</td><td>Works</td><td>Clean declarative regex</td></tr>
+<tr><td>Which internet?</td><td>Full catalog dump</td><td>Non-sales path, include_full_catalog=True</td></tr>
+<tr><td>Internet bhaneko ke ho?</td><td>Wikipedia answer</td><td>No persona scope controller</td></tr>
+<tr><td>Puchna haina sodhna... i am indian i am Nepali</td><td>Name = "Indian I Am Nepali"; still says puchna</td><td>No memory validator; no repair layer</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>4. Task 3 — Top 10 Architecture Problems</h2>
+<table>
+<tr><th>Rank</th><th>Problem</th><th>Severity</th><th>Impact</th></tr>
+<tr><td>1</td><td>No conversation orchestrator / state machine</td><td class="crit">Critical</td><td>Sales, UX, Conversion</td></tr>
+<tr><td>2</td><td>Single-turn LLM + prompt stuffing</td><td class="crit">Critical</td><td>UX, Sales, Memory</td></tr>
+<tr><td>3</td><td>Unvalidated regex memory writes</td><td class="crit">Critical</td><td>Memory, UX</td></tr>
+<tr><td>4</td><td>No response validator</td><td class="crit">Critical</td><td>Sales, Conversion</td></tr>
+<tr><td>5</td><td>Persona only in prompts</td><td class="high">High</td><td>UX, Sales</td></tr>
+<tr><td>6</td><td>Lead CRM decoupled from planner</td><td class="high">High</td><td>Conversion</td></tr>
+<tr><td>7</td><td>No conversation repair layer</td><td class="high">High</td><td>UX, Memory</td></tr>
+<tr><td>8</td><td>Prompt block competition</td><td class="high">High</td><td>Sales, UX</td></tr>
+<tr><td>9</td><td>Weak tenant knowledge</td><td>Medium</td><td>UX</td></tr>
+<tr><td>10</td><td>Deploy/test discipline</td><td>Medium</td><td>Reliability</td></tr>
+</table>
+
+<h2>5. Task 4 — Failure Contribution Estimates</h2>
+<table>
+<tr><th>Category</th><th>Est. %</th></tr>
+<tr><td>Architecture (no orchestrator)</td><td>28%</td></tr>
+<tr><td>Conversation logic (single-turn, no planner)</td><td>22%</td></tr>
+<tr><td>Prompt design (overload, conflicts)</td><td>18%</td></tr>
+<tr><td>Memory design (regex, no validation)</td><td>15%</td></tr>
+<tr><td>State management</td><td>10%</td></tr>
+<tr><td>Lead engine</td><td>4%</td></tr>
+<tr><td>Persona system</td><td>2%</td></tr>
+<tr><td>Knowledge base</td><td>1%</td></tr>
+</table>
+<p><strong>Key insight:</strong> Lead engine is an event logger, not the main failure driver.</p>
+
+<h2>6. Task 5 — Why Bugs Reappear</h2>
+<ul>
+<li>Fixes patch symptoms in isolated files (regex, prompt hints) without central state</li>
+<li>Each fix adds prompt surface area — instructions compete and dilute</li>
+<li><code>sales_mode=True</code> in logs ≠ correct UX behavior</li>
+<li>No Nepali golden-path regression tests</li>
+<li>Partial deploys: production ≠ repo behavior</li>
+<li>LLM asked to orchestrate what code should own</li>
+</ul>
+
+<h2>7. Task 6 — Missing Layers</h2>
+<table>
+<tr><th>Layer</th><th>Status</th></tr>
+<tr><td>State Manager</td><td class="crit">MISSING</td></tr>
+<tr><td>Persona Manager</td><td class="crit">MISSING</td></tr>
+<tr><td>Memory Validator</td><td class="crit">MISSING</td></tr>
+<tr><td>Conversation Repair Manager</td><td class="crit">MISSING</td></tr>
+<tr><td>Sales Controller</td><td class="high">PARTIAL (bool + regex only)</td></tr>
+<tr><td>Goal Tracker</td><td class="crit">MISSING</td></tr>
+<tr><td>Dialogue Planner</td><td class="crit">MISSING</td></tr>
+<tr><td>Response Validator</td><td class="crit">MISSING</td></tr>
+</table>
+
+<h2>8. Task 7 &amp; 8 — Phase 3 Architecture (Recommended)</h2>
+<p><strong>Principle:</strong> Code owns state and decisions; LLM owns language generation.</p>
+
+<pre class="diagram">Telegram Webhook (main.py)
+        │
+        ▼
+Ingress Router (tenant, rate limit)
+        │
+        ▼
+┌───────────────────────────────────────┐
+│     CONVERSATION ORCHESTRATOR         │
+│        (conversation_brain.py)        │
+└───────────────────┬───────────────────┘
+                    │
+    ┌───────────────┼───────────────┐
+    ▼               ▼               ▼
+State Manager   Signal Extractors  Memory Manager
+(phase, goal)   intent/lead/repair  propose→validate→commit
+    │               │               │
+    └───────────────┼───────────────┘
+                    ▼
+           Dialogue Planner
+         (next_action, persona)
+                    │
+    ┌───────────────┼───────────────┐
+    ▼               ▼               ▼
+Persona Ctrl   Context Retriever  Lead/CRM Sync
+                    │
+                    ▼
+           Prompt Composer (minimal)
+                    ▼
+           LLM Generator (multi-turn)
+                    ▼
+           Response Validator
+                    ▼
+         Persist state + Telegram reply</pre>
+
+<p><strong>Sales playbook states:</strong> DISCOVER → QUALIFY → PROPOSE → HANDLE_OBJECTION → COLLECT_CONTACT → HANDOFF → CLOSED</p>
+
+<div class="page-break"></div>
+
+<h2>9. Task 9 — Implementation Priority</h2>
+<table>
+<tr><th>Priority</th><th>Work</th><th>Why first</th></tr>
+<tr><td>P1</td><td>Conversation State + Orchestrator</td><td>Stops prompt whac-a-mole</td></tr>
+<tr><td>P2</td><td>Memory Validation Layer</td><td>Stops name corruption; high trust impact</td></tr>
+<tr><td>P3</td><td>Multi-turn LLM + Minimal Prompt Composer</td><td>Biggest quality lift per token</td></tr>
+<tr><td>P4</td><td>Dialogue Planner + Sales Playbook</td><td>Turns lead score into actions</td></tr>
+<tr><td>P5</td><td>Response Validator</td><td>Blocks repeat pitch, wrong escalation</td></tr>
+<tr><td>P6</td><td>Conversation Repair Manager</td><td>Handles "sodhna not puchna" corrections</td></tr>
+<tr><td>P7</td><td>Tenant Knowledge Base</td><td>HONS FAQs, policies, talk-tracks</td></tr>
+<tr><td>P8</td><td>Observability + CI golden tests</td><td>20 Nepali scenario tests</td></tr>
+</table>
+
+<h2>10. Task 10 — Maturity Rating</h2>
+<table>
+<tr><th>Level</th><th>Status</th></tr>
+<tr><td>Level 1 Prototype</td><td class="pass">Passed</td></tr>
+<tr><td>Level 2 Functional MVP</td><td class="pass">Current core</td></tr>
+<tr><td>Level 3 Early Production</td><td>Partial — deployed, inconsistent under real Nepali dialogs</td></tr>
+<tr><td>Level 4 Stable Production</td><td class="crit">Not met</td></tr>
+<tr><td>Level 5 Enterprise Ready</td><td class="crit">Not met</td></tr>
+</table>
+
+<h2>11. What Works (Keep)</h2>
+<ul>
+<li>Telegram webhook + FastAPI shell</li>
+<li>Multi-tenant company_manager + company_profiles.json</li>
+<li>Durable memory, chat history, lead persistence</li>
+<li>Lead extraction/scoring/export</li>
+<li>Phase 2 sales mode + objection patches (on disk)</li>
+</ul>
+
+<h2>12. What Must Be Redesigned</h2>
+<ul>
+<li>Conversation orchestration (the "brain")</li>
+<li>Memory write path (validation before commit)</li>
+<li>LLM invocation (multi-turn, minimal prompts)</li>
+<li>Output validation before Telegram send</li>
+<li>Persona/phase routing (not prompt-only)</li>
+</ul>
+
+<div class="cto">
+<strong>CTO one-liner:</strong> The bot can store a lead and store a name, but it cannot reason about what kind of turn this is — correction vs identity vs product vs education — so it corrupts memory and repeats templates. Do not add more regex or prompt text until Conversation State + Memory Validator + Response Validator exist.
+</div>
+
+<div class="footer">
+Vyapar AI Employee — Independent Architecture Audit — June 3, 2026 — Evidence-based production readiness review
+</div>
+
+</body>
+</html>

@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phase 1 Modification Plan — Vyapar AI Employee Platform</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    @page { size: A4; margin: 18mm 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Noto Sans Devanagari", "Inter", sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.55;
+      color: #1a1a2e;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 20px 24px 40px;
+      background: #fff;
+    }
+    h1 {
+      font-size: 20pt;
+      color: #0f3460;
+      border-bottom: 3px solid #e94560;
+      padding-bottom: 8px;
+      margin-top: 0;
+    }
+    h2 {
+      font-size: 13pt;
+      color: #16213e;
+      margin-top: 22px;
+      border-left: 4px solid #e94560;
+      padding-left: 10px;
+    }
+    h3 { font-size: 11pt; color: #0f3460; margin-top: 16px; }
+    .meta {
+      background: #f0f4f8;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin: 16px 0;
+      font-size: 10pt;
+    }
+    .meta p { margin: 4px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 9.5pt;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #0f3460; color: #fff; font-weight: 600; }
+    tr:nth-child(even) { background: #f8fafc; }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 8.5pt;
+      background: #f1f5f9;
+      border-radius: 4px;
+    }
+    pre {
+      padding: 12px 14px;
+      overflow-x: auto;
+      border: 1px solid #e2e8f0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    code { padding: 1px 5px; }
+    ul, ol { margin: 8px 0; padding-left: 22px; }
+    li { margin: 4px 0; }
+    .badge {
+      display: inline-block;
+      background: #e94560;
+      color: #fff;
+      font-size: 8pt;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .note {
+      background: #fffbeb;
+      border-left: 4px solid #f59e0b;
+      padding: 10px 14px;
+      margin: 12px 0;
+      font-size: 9.5pt;
+    }
+    .footer {
+      margin-top: 30px;
+      padding-top: 12px;
+      border-top: 1px solid #cbd5e1;
+      font-size: 9pt;
+      color: #64748b;
+      text-align: center;
+    }
+    .page-break { page-break-before: always; }
+    @media print {
+      body { padding: 0; }
+      h2 { page-break-after: avoid; }
+      table, pre { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Phase 1 Modification Plan</h1>
+<p><strong>Vyapar AI — Universal AI Employee Platform</strong></p>
+
+<div class="meta">
+  <p><strong>Document:</strong> Phase 1 Implementation Plan (Approval Required)</p>
+  <p><strong>Project Path:</strong> Z:\Vyapar AI\cursor</p>
+  <p><strong>Date:</strong> June 1, 2026</p>
+  <p><strong>Status:</strong> <span class="badge">DRAFT — AWAITING APPROVAL</span></p>
+  <p><strong>Goal:</strong> Single-tenant HONS MVP लाई multi-tenant-ready AI Employee foundation मा रूपान्तरण</p>
+</div>
+
+<h2>1. Executive Summary (संक्षipt)</h2>
+<p>
+  यो Phase 1 plan ले <code>company_profiles.json</code> लाई <strong>single source of truth</strong> बनाउँछ।
+  Hardcoded HONS data (<code>business_settings.py</code>, <code>products.py</code>) हटाइन्छ।
+  प्रत्येक deployment <code>COMPANY_ID</code> environment variable बाट tenant identify गर्छ।
+</p>
+<ul>
+  <li>Memory system — preserved</li>
+  <li>Telegram webhook/polling — preserved</li>
+  <li>OpenAI engine — preserved</li>
+  <li>Admin panel, vector DB, WhatsApp/voice — <strong>NOT in scope</strong></li>
+</ul>
+
+<h2>2. Scope Guardrails</h2>
+<table>
+  <tr><th>Include</th><th>Exclude</th></tr>
+  <tr>
+    <td>
+      company_profiles.json as SSOT<br/>
+      company_manager API expansion<br/>
+      COMPANY_ID env routing<br/>
+      Error handling for missing profile<br/>
+      env.example update
+    </td>
+    <td>
+      Admin panel<br/>
+      Vector database / RAG<br/>
+      WhatsApp / voice channels<br/>
+      Package restructure (src/)<br/>
+      DB tenant columns (Phase 2)
+    </td>
+  </tr>
+</table>
+
+<h2>3. Files to Modify (7)</h2>
+<table>
+  <tr><th>#</th><th>File</th><th>Action</th><th>Description</th></tr>
+  <tr>
+    <td>1</td>
+    <td><code>company_profiles.json</code></td>
+    <td>Modify</td>
+    <td>Schema enrich: products (tags, description), rules array</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td><code>company_manager.py</code></td>
+    <td>Modify</td>
+    <td>New API functions + CompanyProfileError</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td><code>business_settings.py</code></td>
+    <td>Modify</td>
+    <td>Load from company_manager; remove hardcoded constants</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td><code>products.py</code></td>
+    <td>Modify</td>
+    <td>Dynamic product load per company_id</td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td><code>ai_employee_engine.py</code></td>
+    <td>Modify</td>
+    <td>Pass COMPANY_ID through reply pipeline</td>
+  </tr>
+  <tr>
+    <td>6</td>
+    <td><code>env.example</code></td>
+    <td>Modify</td>
+    <td>Add COMPANY_ID=hons</td>
+  </tr>
+  <tr>
+    <td>7</td>
+    <td><code>main.py</code></td>
+    <td>Modify (minimal)</td>
+    <td>Startup validation log for company profile</td>
+  </tr>
+</table>
+
+<h2>4. Files Unchanged (Preserved)</h2>
+<table>
+  <tr><th>File</th><th>Reason</th></tr>
+  <tr><td><code>memory.py</code>, <code>memory_db.py</code>, <code>memory_extractor.py</code></td><td>Memory system preserved</td></tr>
+  <tr><td><code>openai_engine.py</code></td><td>OpenAI engine preserved</td></tr>
+  <tr><td><code>main.py</code> webhook/polling/rate limit</td><td>Telegram preserved</td></tr>
+  <tr><td><code>intent_engine.py</code>, <code>knowledge_base.py</code>, <code>prompts.py</code></td><td>Working features preserved</td></tr>
+  <tr><td><code>admin_*.py</code>, <code>render.yaml</code>, <code>requirements.txt</code></td><td>Out of Phase 1 scope</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>5. company_profiles.json — Schema Enrichment</h2>
+<p><strong>Problem:</strong> Current JSON lacks <code>tags</code>, <code>description</code>, and explicit <code>rules</code> needed for search quality and prompt rules.</p>
+
+<h3>Proposed structure (per tenant):</h3>
+<pre>{
+  "hons": {
+    "company_name": "Himalayan Online Service Pvt. Ltd.",
+    "business_type": "Internet Service Provider",
+    "location": "Head Kamal Pokhari, Kathmandu, Nepal",
+    "contact": {
+      "phone": "+977-1-4541063",
+      "toll_free": "16600149520",
+      "email": "info@hons.com.np"
+    },
+    "support_hours": "6:00 AM to 7:00 PM",
+    "installation_charge": "Free",
+    "router": "Free",
+    "onu": "Free",
+    "rules": [
+      "Always identify the company by its official name when needed.",
+      "Do not invent package prices.",
+      "If customer asks package price, use only the available product data.",
+      "Installation is free.",
+      "Router/ONU is free.",
+      "Support is available during the listed support hours.",
+      "For urgent support, provide phone or toll-free number."
+    ],
+    "products": [
+      {
+        "name": "100 Mbps Internet Package",
+        "price": 10000,
+        "duration_months": 13,
+        "tags": ["100mbps", "100 mbps", "internet", "package", "isp"],
+        "description": "100 Mbps internet package. Installation and Router/ONU are free."
+      }
+    ]
+  }
+}</pre>
+<p>Same pattern for 150 Mbps and 200 Mbps — <strong>behavior parity</strong> with current <code>products.py</code>.</p>
+
+<h2>6. company_manager.py — New API</h2>
+<pre>class CompanyProfileError(Exception):
+    """Raised when company profile is missing or invalid."""
+
+def get_company(company_id: str) -> dict | None
+def get_company_products(company_id: str) -> list[dict]
+def get_company_contact(company_id: str) -> dict
+def get_company_rules(company_id: str) -> list[str]
+def get_company_summary(company_id: str) -> str
+def require_company(company_id: str) -> dict</pre>
+
+<table>
+  <tr><th>Function</th><th>Returns / Behavior</th></tr>
+  <tr><td><code>get_company</code></td><td>Raw tenant dict or None</td></tr>
+  <tr>
+    <td><code>get_company_products</code></td>
+    <td>Normalized: name, price ("NPR 10,000"), duration ("13 months"), tags, description</td>
+  </tr>
+  <tr><td><code>get_company_contact</code></td><td>{phone, toll_free, email} with {} fallbacks</td></tr>
+  <tr><td><code>get_company_rules</code></td><td>rules list from JSON; auto-derive if missing</td></tr>
+  <tr><td><code>require_company</code></td><td>Raises CompanyProfileError with clear message</td></tr>
+</table>
+
+<h2>7. business_settings.py — Refactor</h2>
+<p><strong>Before:</strong> 12 hardcoded constants + static HONS prompt.</p>
+<p><strong>After:</strong></p>
+<pre>def business_context_to_prompt(company_id: str) -> str:
+    company = require_company(company_id)
+    contact = get_company_contact(company_id)
+    rules = get_company_rules(company_id)
+    # Build prompt dynamically from company + contact + rules</pre>
+<ul>
+  <li>Remove all BUSINESS_NAME, BUSINESS_PHONE, etc. constants</li>
+  <li><code>company_id</code> is required parameter</li>
+  <li>Prompt output structurally identical to today for HONS</li>
+</ul>
+
+<h2>8. products.py — Dynamic Load</h2>
+<pre>def _load_products(company_id: str) -> list[dict]
+def search_products(query, top_n=3, company_id: str) -> list[dict]
+def products_to_prompt(items, company_id: str) -> str</pre>
+<ul>
+  <li>Remove module-level PRODUCTS constant</li>
+  <li>Search algorithm unchanged (tags, name, price keywords)</li>
+  <li>Fallback listing from tenant JSON, not hardcoded Mbps lines</li>
+</ul>
+
+<div class="page-break"></div>
+
+<h2>9. ai_employee_engine.py — Tenant-Aware Replies</h2>
+<pre>COMPANY_ID = os.getenv("COMPANY_ID", "hons").strip()
+
+async def generate_employee_reply(user_id: str, text: str) -> str:
+    company_id = COMPANY_ID
+    try:
+        require_company(company_id)
+    except CompanyProfileError:
+        return "This AI employee is not configured yet. Please contact support."
+
+    product_items = search_products(clean_text, top_n=3, company_id=company_id)
+    system_prompt = compose_system_prompt(
+        business_block=business_context_to_prompt(company_id),
+        product_block=products_to_prompt(product_items, company_id=company_id),
+        ...
+    )</pre>
+
+<p><strong>Preserved:</strong> Memory extraction, direct recall, intent, knowledge base, OpenAI call, Telegram 3500 char cap.</p>
+
+<h2>10. env.example — Add Tenant Config</h2>
+<pre>COMPANY_ID=hons</pre>
+<p>Stale unused vars (BUSINESS_NAME, SUPPORT_PHONE, etc.) comment/remove — loaded from company_profiles.json.</p>
+
+<h2>11. main.py — Startup Validation</h2>
+<pre># In lifespan, after init_db():
+company_id = os.getenv("COMPANY_ID", "hons").strip()
+try:
+    require_company(company_id)
+    logger.info("COMPANY_PROFILE_LOADED company_id=%s", company_id)
+except CompanyProfileError:
+    logger.error("COMPANY_PROFILE_MISSING company_id=%s", company_id)</pre>
+<p>App still starts (Telegram/health work); misconfiguration visible in logs immediately.</p>
+
+<h2>12. Data Flow (After Phase 1)</h2>
+<pre>
+COMPANY_ID (env)
+    ↓
+ai_employee_engine.py
+    ↓
+company_manager.py ← company_profiles.json (SSOT)
+    ↓                    ↓
+business_settings.py   products.py
+    ↓
+prompts.py → openai_engine.py → Telegram reply
+
+memory.py (unchanged, parallel path)
+</pre>
+
+<h2>13. Error Handling Matrix</h2>
+<table>
+  <tr><th>Scenario</th><th>Behavior</th></tr>
+  <tr><td>COMPANY_ID missing in env</td><td>Default "hons"</td></tr>
+  <tr><td>company_profiles.json missing</td><td>CompanyProfileError → user-friendly reply + error log</td></tr>
+  <tr><td>Unknown COMPANY_ID</td><td>Same as above</td></tr>
+  <tr><td>Company exists but no products</td><td>Empty search; prompt says no packages confirmed</td></tr>
+  <tr><td>Company exists but no rules</td><td>Auto-derived from install/router/onu/support_hours</td></tr>
+</table>
+
+<h2>14. Manual Testing Plan</h2>
+<ol>
+  <li><code>COMPANY_ID=hons</code> → same HONS package/pricing answers as before</li>
+  <li><code>COMPANY_ID=invalid</code> → graceful error message, no crash</li>
+  <li>Memory: "Mero naam X ho" / "Mero naam ke ho?" still works</li>
+  <li>Telegram webhook + OpenAI path unchanged</li>
+  <li>Invalid/missing JSON → startup error log visible</li>
+</ol>
+
+<h2>15. Risks &amp; Non-Goals</h2>
+<table>
+  <tr><th>Item</th><th>Decision</th></tr>
+  <tr><td>Multi-bot single process</td><td>One COMPANY_ID per deployment (Render instance)</td></tr>
+  <tr><td>Hot reload JSON</td><td>Not included — restart required after profile change</td></tr>
+  <tr><td>company_profile.json</td><td>Not used; optional delete later</td></tr>
+  <tr><td>DB tenant column</td><td>Phase 2 — not in this PR</td></tr>
+</table>
+
+<h2>16. Estimated Diff Size</h2>
+<p><strong>~250–350 lines</strong> changed across 7 files. No new directories.</p>
+
+<h2>17. Approval Checklist</h2>
+<div class="note">
+  <strong>Please confirm before implementation:</strong>
+  <ol>
+    <li>Approve all 7 file changes as listed?</li>
+    <li>Enrich company_profiles.json with rules, product tags/description?</li>
+    <li>Default COMPANY_ID=hons when env unset?</li>
+    <li>Delete company_profile.json or leave unused?</li>
+    <li>Update README_DEPLOY.md with COMPANY_ID (recommended)?</li>
+  </ol>
+  <p>Reply <strong>"approved"</strong> with any adjustments to proceed with implementation.</p>
+</div>
+
+<div class="footer">
+  Vyapar AI Employee Platform — Phase 1 Modification Plan<br/>
+  Generated: June 1, 2026 | Document version 1.0 | Analysis only — no code modified
+</div>
+
+</body>
+</html>

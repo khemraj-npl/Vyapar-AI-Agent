@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+<meta charset="UTF-8"/>
+<title>Phase 2 — Smart Lead Qualification Plan | Vyapar AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page{size:A4;margin:14mm 12mm}
+*{box-sizing:border-box}
+body{font-family:Inter,"Noto Sans Devanagari",sans-serif;font-size:9.5pt;line-height:1.5;color:#111;max-width:210mm;margin:0 auto;padding:16px 18px 32px}
+h1{font-size:18pt;color:#0f3460;border-bottom:3px solid #e94560;padding-bottom:6px;margin:0 0 6px}
+h2{font-size:12pt;color:#16213e;margin:18px 0 8px;border-left:4px solid #e94560;padding-left:9px;page-break-after:avoid}
+h3{font-size:10pt;color:#0f3460;margin:12px 0 5px}
+.meta{background:#f0f4f8;padding:11px 14px;border-radius:6px;font-size:8.5pt;margin:12px 0}
+.badge{background:#f59e0b;color:#fff;font-size:7.5pt;padding:2px 9px;border-radius:8px;font-weight:600}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:8.5pt}
+th,td{border:1px solid #cbd5e1;padding:5px 8px;text-align:left;vertical-align:top}
+th{background:#0f3460;color:#fff}
+tr:nth-child(even){background:#f8fafc}
+pre{font-family:"JetBrains Mono",Consolas,monospace;font-size:7.5pt;line-height:1.35;background:#f1f5f9;padding:9px 11px;border-radius:4px;border:1px solid #e2e8f0;white-space:pre-wrap;word-break:break-word}
+.diagram{font-family:"JetBrains Mono",monospace;font-size:7.5pt;background:#f8fafc;border:1px solid #e2e8f0;padding:10px;white-space:pre-wrap;line-height:1.35}
+.page-break{page-break-before:always}
+ul,ol{margin:5px 0;padding-left:20px}li{margin:3px 0}
+.note{background:#fffbeb;border-left:4px solid #f59e0b;padding:9px 12px;margin:10px 0;font-size:8.5pt}
+.footer{margin-top:22px;padding-top:9px;border-top:1px solid #cbd5e1;font-size:8pt;color:#64748b;text-align:center}
+</style>
+</head>
+<body>
+
+<h1>Phase 2: Smart Lead Qualification</h1>
+<p><strong>Vyapar AI — Universal AI Employee Platform</strong></p>
+
+<div class="meta">
+<p><strong>Status:</strong> <span class="badge">PLAN ONLY — NOT IMPLEMENTED</span></p>
+<p><strong>Date:</strong> June 2, 2026</p>
+<p><strong>Builds on:</strong> Phase 1 (company_manager, COMPANY_ID, dynamic products)</p>
+<p><strong>Goal:</strong> Transform FAQ bot → sales employee with lead intelligence</p>
+</div>
+
+<h2>1. Problem Statement</h2>
+<table>
+<tr><th>Today</th><th>Target</th></tr>
+<tr><td>Answers FAQs via OpenAI + product injection</td><td>Detects buying intent and qualifies leads</td></tr>
+<tr><td>Generic "sales" intent keyword</td><td>Nepali/English purchase phrases + signal scoring</td></tr>
+<tr><td>User facts in user_memory only</td><td>Structured leads with stages in DB</td></tr>
+<tr><td>No match → dumps full package list</td><td>Acknowledge → alternative → collect phone → save lead</td></tr>
+<tr><td>"Be helpful" prompt tone</td><td>"Act like sales employee" — move toward conversion</td></tr>
+</table>
+
+<h2>2. Architecture Overview</h2>
+<div class="diagram">Telegram message
+    ↓
+ai_employee_engine
+    ├── memory_extractor (existing)
+    ├── lead_extractor (NEW)
+    │       ↓
+    ├── lead_manager (NEW) → leads table (NEW)
+    ├── buying intent + stage scorer (NEW)
+    ├── products.search + match check
+    │       ├── exact match → standard prompt
+    │       └── no match → sales fallback (NO list dump)
+    └── OpenAI → reply</div>
+
+<h3>Pipeline order (after Phase 2)</h3>
+<ol>
+<li>sanitize + save user turn (unchanged)</li>
+<li>extract_memory_facts (unchanged)</li>
+<li>extract_lead_signals (NEW)</li>
+<li>detect_buying_intent (NEW)</li>
+<li>upsert_lead via lead_manager (NEW)</li>
+<li>direct memory answer (unchanged)</li>
+<li>company config check (unchanged)</li>
+<li>resolve sales_mode + product match (NEW)</li>
+<li>compose prompt with lead_block + sales hint (NEW)</li>
+<li>OpenAI + save reply (unchanged)</li>
+</ol>
+
+<h2>3. Files to Create (2)</h2>
+
+<h3>3.1 lead_extractor.py</h3>
+<table>
+<tr><th>Function</th><th>Purpose</th></tr>
+<tr><td>detect_buying_intent(text)</td><td>Nepali + English purchase/install patterns</td></tr>
+<tr><td>extract_lead_signals(text)</td><td>budget, location, speed, urgency</td></tr>
+<tr><td>extract_lead_fields(text, memory)</td><td>customer_name, location, budget, requested_speed, phone</td></tr>
+<tr><td>score_lead_stage(fields, signals, buying)</td><td>new | interested | qualified | hot</td></tr>
+</table>
+
+<p><strong>Buying intent patterns:</strong></p>
+<pre>internet jodnu cha / jodna cha
+package lina cha / linu cha
+net chahiyo / internet chahiyo
+connection chahiyo
+install garna cha
+subscribe / new connection / lagau / laguna</pre>
+
+<p><strong>Lead signals:</strong></p>
+<table>
+<tr><th>Signal</th><th>Examples</th></tr>
+<tr><td>Budget</td><td>NPR 12,000, bar hajar, budget, kati paisa</td></tr>
+<tr><td>Location</td><td>City aliases + ma ... baschhu, area names</td></tr>
+<tr><td>Speed</td><td>100 mbps, fast net, high speed</td></tr>
+<tr><td>Urgency</td><td>aile, chhito, urgent, bholi, chada, asap</td></tr>
+</table>
+
+<h3>3.2 lead_manager.py</h3>
+<pre>LEAD_STAGES = ("new", "interested", "qualified", "hot")
+
+upsert_lead(user_id, company_id, fields, signals, stage, source_message)
+get_active_lead(user_id, company_id)
+update_lead_stage(lead_id, stage)
+lead_to_prompt(lead)          # inject into system prompt
+export_leads(company_id)      # admin CLI later</pre>
+
+<p><strong>Upsert rules:</strong> One active open lead per (user_id, company_id). Never downgrade stage. Merge fields — fill empty only.</p>
+
+<div class="page-break"></div>
+
+<h2>4. Files to Modify (6)</h2>
+<table>
+<tr><th>File</th><th>Change</th></tr>
+<tr><td>memory_db.py</td><td>Add Lead SQLAlchemy model</td></tr>
+<tr><td>ai_employee_engine.py</td><td>Wire lead pipeline + sales mode branch</td></tr>
+<tr><td>intent_engine.py</td><td>buying_intent, lead_qualification intents + hints</td></tr>
+<tr><td>prompts.py</td><td>SALES_EMPLOYEE_HINT, lead_block, sales_mode param</td></tr>
+<tr><td>products.py</td><td>find_best_product_match(), has_exact_speed_match()</td></tr>
+<tr><td>env.example</td><td>LEAD_ACTIVE_DAYS=30 (optional)</td></tr>
+</table>
+<p><strong>Unchanged:</strong> main.py, openai_engine.py, memory.py core, company_manager.py</p>
+
+<h2>5. Lead Stages — Scoring Rules</h2>
+<table>
+<tr><th>Stage</th><th>Criteria</th></tr>
+<tr><td><strong>new</strong></td><td>buying_intent=True OR sales intent with no signals</td></tr>
+<tr><td><strong>interested</strong></td><td>new + at least 1 signal (budget OR location OR speed OR urgency)</td></tr>
+<tr><td><strong>qualified</strong></td><td>(name) + (phone) + (location OR speed)</td></tr>
+<tr><td><strong>hot</strong></td><td>qualified + urgency OR explicit install/lina/jodnu + phone present</td></tr>
+</table>
+
+<h2>6. Database — leads Table</h2>
+<pre>leads
+├── id              INTEGER PK
+├── user_id         STRING(64) INDEX
+├── company_id      STRING(64) INDEX
+├── stage           new | interested | qualified | hot
+├── customer_name   STRING(120)
+├── location        STRING(160)
+├── budget          STRING(64)
+├── requested_speed STRING(64)
+├── phone           STRING(32)
+├── urgency         low | medium | high
+├── buying_intent   BOOLEAN
+├── matched_product STRING(160)
+├── alternative_product STRING(160)
+├── source_message  TEXT
+├── notes           TEXT
+├── created_at, updated_at</pre>
+
+<h2>7. Field Extraction Mapping</h2>
+<table>
+<tr><th>Lead field</th><th>Primary</th><th>Fallback</th></tr>
+<tr><td>customer_name</td><td>lead_extractor patterns</td><td>user_memory.name</td></tr>
+<tr><td>location</td><td>extract_city() + area regex</td><td>user_memory.city</td></tr>
+<tr><td>budget</td><td>NPR/Rs/hajar regex</td><td>—</td></tr>
+<tr><td>requested_speed</td><td>\d+ mbps patterns</td><td>user_memory.package_interest</td></tr>
+<tr><td>phone</td><td>extract_phone()</td><td>user_memory.phone</td></tr>
+</table>
+
+<h2>8. Sales Mode — Unavailable Package</h2>
+
+<h3>Triggers</h3>
+<ul>
+<li>detect_buying_intent(text) == True</li>
+<li>sales/pricing intent + speed not in catalog</li>
+<li>search_products() empty but speed/buying mentioned</li>
+<li>Requested speed higher than max catalog product</li>
+</ul>
+
+<h3>Behavior when no exact match</h3>
+<table>
+<tr><th>Do NOT</th><th>DO</th></tr>
+<tr><td>Dump full package list in prompt</td><td>Acknowledge customer need first</td></tr>
+<tr><td>Repeat FAQ-style catalog</td><td>Propose one closest alternative</td></tr>
+<tr><td>Ignore lead context</td><td>Ask for phone if missing</td></tr>
+<tr><td>—</td><td>Create/update lead in lead_manager</td></tr>
+</table>
+
+<h3>Example reply (Nepali)</h3>
+<pre>"500 Mbps ahile hamro catalog ma chhaina, tara 200 Mbps package le
+dherai ghar ra office ko lagi upayukta hunchha. Yadi tapai lai yo bhanda
+farak option chahiyo bhane hamro team le confirm garchha.
+Tapai ko contact number dinu hola, ma follow-up ko lagi save garidinchhu."</pre>
+
+<div class="page-break"></div>
+
+<h2>9. Prompt Changes (prompts.py)</h2>
+<pre>def compose_system_prompt(
+    business_block, memory_block, intent_block,
+    knowledge_block, product_block,
+    lead_block: str = "",      # NEW
+    sales_mode: bool = False,  # NEW
+) -> str</pre>
+
+<p><strong>SALES_EMPLOYEE_HINT:</strong></p>
+<ul>
+<li>Act as sales employee, not FAQ bot</li>
+<li>Acknowledge specific need first</li>
+<li>If exact product unavailable — one alternative only, no full list</li>
+<li>Ask for phone naturally if missing and intent is strong</li>
+<li>Concise for Telegram; reply in user's language</li>
+</ul>
+
+<h2>10. Logging Events</h2>
+<pre>LEAD_SIGNALS_DETECTED user_id=... signals={...}
+LEAD_UPSERTED user_id=... company_id=... stage=qualified
+SALES_MODE_ACTIVE user_id=... reason=no_exact_match
+LEAD_PHONE_COLLECTED user_id=... stage=hot</pre>
+
+<h2>11. Backward Compatibility</h2>
+<ul>
+<li>Memory system untouched — lead reads from it</li>
+<li>FAQ/support messages — no lead unless buying intent or signals</li>
+<li>generate_employee_reply signature — optional params only</li>
+<li>All leads scoped by company_id (Phase 1)</li>
+<li>No admin panel — CLI export only</li>
+</ul>
+
+<h2>12. Testing Checklist</h2>
+<table>
+<tr><th>#</th><th>Input</th><th>Expected</th></tr>
+<tr><td>1</td><td>Internet jodnu cha</td><td>buying_intent, lead stage≥new, sales tone</td></tr>
+<tr><td>2</td><td>100 mbps package lina cha, Kathmandu ma</td><td>stage=interested, location saved</td></tr>
+<tr><td>3</td><td>Mero naam Ram ho, 9800000000, 150 mbps chahiyo</td><td>stage=qualified or hot</td></tr>
+<tr><td>4</td><td>500 mbps chahiyo (not in catalog)</td><td>No full list; alternative + phone ask</td></tr>
+<tr><td>5</td><td>Support hours kati ho?</td><td>FAQ mode, no lead</td></tr>
+<tr><td>6</td><td>Mero naam ke ho?</td><td>Direct memory, no lead side effect</td></tr>
+<tr><td>7</td><td>Repeat user next day</td><td>Lead upserted, stage not downgraded</td></tr>
+<tr><td>8</td><td>COMPANY_ID=hons</td><td>lead.company_id=hons</td></tr>
+</table>
+
+<h2>13. Risks &amp; Mitigations</h2>
+<table>
+<tr><th>Risk</th><th>Mitigation</th></tr>
+<tr><td>False-positive leads on "help"</td><td>Require buying_intent OR 2+ signals</td></tr>
+<tr><td>Duplicate leads</td><td>Upsert on (user_id, company_id) 30-day window</td></tr>
+<tr><td>AI still dumps packages</td><td>Sales mode omits full product_block</td></tr>
+<tr><td>Regex misses Nepali variants</td><td>Iterative patterns + log unmatched messages</td></tr>
+<tr><td>Render partial deploy</td><td>Deploy all files together</td></tr>
+</table>
+
+<h2>14. Out of Scope (Phase 2)</h2>
+<p>Admin dashboard · CRM webhook · Telegram admin alert on hot lead · Vector search · Background worker · Alembic · WhatsApp</p>
+
+<h2>15. Implementation Order (~5–7 days)</h2>
+<table>
+<tr><th>Day</th><th>Task</th></tr>
+<tr><td>1</td><td>Lead model + lead_manager CRUD/upsert</td></tr>
+<tr><td>2</td><td>lead_extractor — intent, signals, stage scorer</td></tr>
+<tr><td>3</td><td>products.py — find_best_product_match()</td></tr>
+<tr><td>4</td><td>prompts.py + intent_engine.py sales hints</td></tr>
+<tr><td>5</td><td>ai_employee_engine.py full pipeline</td></tr>
+<tr><td>6</td><td>Telegram testing + admin_export_leads.py</td></tr>
+<tr><td>7</td><td>README_DEPLOY.md + Render deploy</td></tr>
+</table>
+<p><strong>Estimated:</strong> ~400–500 lines across 2 new + 6 modified files</p>
+
+<h2>16. Approval Checklist</h2>
+<div class="note">
+<ol>
+<li>One active lead per user per tenant (upsert, 30-day window)?</li>
+<li>Stage scoring rules (§5) acceptable?</li>
+<li>Unavailable package → strict no list dump rule?</li>
+<li>Phone collection as primary hot-stage goal?</li>
+<li>admin_export_leads.py in Phase 2 or defer?</li>
+</ol>
+<p>Reply <strong>"approved"</strong> with adjustments to begin implementation.</p>
+</div>
+
+<div class="footer">
+Vyapar AI Employee Platform — Phase 2 Smart Lead Qualification Plan · June 2, 2026 · Plan only
+</div>
+</body>
+</html>

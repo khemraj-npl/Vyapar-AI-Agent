@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Phase 2 — Smart Lead Qualification Plan v2 | Vyapar AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page{size:A4;margin:12mm 11mm}
+body{font-family:Inter,"Noto Sans Devanagari",sans-serif;font-size:9pt;line-height:1.45;color:#111;max-width:210mm;margin:0 auto;padding:14px 16px 28px}
+h1{font-size:17pt;color:#0f3460;border-bottom:3px solid #e94560;padding-bottom:5px;margin:0}
+h2{font-size:11.5pt;color:#16213e;margin:16px 0 7px;border-left:4px solid #e94560;padding-left:8px;page-break-after:avoid}
+h3{font-size:9.5pt;color:#0f3460;margin:10px 0 4px}
+.meta{background:#f0f4f8;padding:10px 12px;border-radius:5px;font-size:8.5pt;margin:10px 0}
+.badge{background:#f59e0b;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-v2{background:#2563eb;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+table{width:100%;border-collapse:collapse;margin:7px 0;font-size:8pt}
+th,td{border:1px solid #cbd5e1;padding:4px 7px;text-align:left;vertical-align:top}
+th{background:#0f3460;color:#fff}
+tr:nth-child(even){background:#f8fafc}
+pre{font-family:"JetBrains Mono",Consolas,monospace;font-size:7pt;background:#f1f5f9;padding:8px 10px;border-radius:4px;border:1px solid #e2e8f0;white-space:pre-wrap;word-break:break-word}
+.diagram{font-family:"JetBrains Mono",monospace;font-size:7pt;background:#f8fafc;border:1px solid #e2e8f0;padding:9px;white-space:pre-wrap;line-height:1.3}
+.new{background:#eff6ff;border-left:3px solid #2563eb;padding:6px 10px;margin:8px 0;font-size:8pt}
+.page-break{page-break-before:always}
+ul,ol{margin:4px 0;padding-left:18px}li{margin:2px 0}
+.footer{margin-top:18px;padding-top:8px;border-top:1px solid #cbd5e1;font-size:7.5pt;color:#64748b;text-align:center}
+</style>
+</head>
+<body>
+
+<h1>Phase 2: Smart Lead Qualification</h1>
+<p><strong>Revised Plan v2</strong> <span class="badge-v2">ADJUSTMENTS INTEGRATED</span> <span class="badge">NOT IMPLEMENTED</span></p>
+
+<div class="meta">
+<p><strong>Date:</strong> June 2, 2026 &nbsp;|&nbsp; <strong>Builds on:</strong> Phase 1 (company_manager, COMPANY_ID)</p>
+<p><strong>Goal:</strong> Sales employee with lead intelligence — not a FAQ bot</p>
+<p><strong>v2 adjustments:</strong> contact_method · coverage_check_needed · lead_score 0–100 · ADMIN_ALERT placeholder · sales conversation memory</p>
+</div>
+
+<h2>1. Executive Summary</h2>
+<table>
+<tr><th>Original (kept)</th><th>New (v2)</th></tr>
+<tr><td>Buying intent (Nepali + English)</td><td>+ coverage_check_needed signal</td></tr>
+<tr><td>Signals: budget, location, speed, urgency</td><td>+ contact_method: phone / telegram / whatsapp</td></tr>
+<tr><td>Stages: new → interested → qualified → hot</td><td>+ lead_score 0–100 alongside stages</td></tr>
+<tr><td>lead_manager.py persistence</td><td>+ sales memory fields on lead</td></tr>
+<tr><td>Unavailable package → no list dump</td><td>+ coverage-aware sales flow</td></tr>
+<tr><td>Sales employee prompt</td><td>+ ADMIN_ALERT_ENABLED placeholder</td></tr>
+</table>
+
+<h2>2. Revised Pipeline (16 steps)</h2>
+<ol>
+<li>sanitize + save user turn</li>
+<li>extract_memory_facts (unchanged)</li>
+<li>extract_lead_signals + detect_buying_intent</li>
+<li><strong>detect contact_method (NEW)</strong></li>
+<li><strong>detect coverage_check_needed (NEW)</strong></li>
+<li>extract_lead_fields (merge memory)</li>
+<li><strong>compute lead_score 0–100 (NEW)</strong></li>
+<li>derive stage from score + rules</li>
+<li>upsert_lead + update sales_memory</li>
+<li>direct memory answer (unchanged)</li>
+<li>company config check (unchanged)</li>
+<li>resolve sales_mode + coverage + product match</li>
+<li>compose prompt (lead_block + sales_memory_block)</li>
+<li>OpenAI + save reply</li>
+<li><strong>update sales_memory from reply (NEW)</strong></li>
+<li><strong>admin_notifier placeholder if threshold met (NEW)</strong></li>
+</ol>
+
+<div class="diagram">Telegram → ai_employee_engine
+  → lead_extractor → lead_manager → leads table
+  → lead_score → stage (new/qualified/interested/hot)
+  → coverage_check_needed? → sales coverage prompt
+  → product match? → sales fallback (NO list dump)
+  → ADMIN_ALERT_ENABLED? → log placeholder
+  → OpenAI → reply → update sales_memory</div>
+
+<h2>3. Adjustment 1 — contact_method</h2>
+<table>
+<tr><th>Value</th><th>When</th><th>Stored in</th></tr>
+<tr><td>telegram</td><td>Default for Telegram bot</td><td>contact_value = user_id</td></tr>
+<tr><td>phone</td><td>NP mobile extracted or "call garnus"</td><td>contact_value = phone</td></tr>
+<tr><td>whatsapp</td><td>User mentions WhatsApp / WA number</td><td>contact_value = WA number</td></tr>
+</table>
+<p>Priority: explicit mention &gt; phone extracted &gt; default telegram.</p>
+<pre>CONTACT_METHOD_PATTERNS:
+  whatsapp: whatsapp, wa ma, व्हाट्सएप
+  phone: phone, call, mobile, number dinchu
+  telegram: telegram, telegram mai (explicit)</pre>
+
+<h2>4. Adjustment 2 — coverage_check_needed</h2>
+<p><strong>Purpose:</strong> ISP service availability validation before quoting/install.</p>
+<table>
+<tr><th>Trigger</th><th>Example</th></tr>
+<tr><td>Location + buying intent</td><td>Baluwatar ma internet jodnu cha</td></tr>
+<tr><td>Location + speed ask</td><td>Pokhara ma 100 mbps chahiyo</td></tr>
+<tr><td>Explicit coverage question</td><td>hamro area ma auncha?</td></tr>
+</table>
+<p><strong>Sales behavior:</strong> Do NOT promise install date. Acknowledge need → confirm team will verify area → collect contact.</p>
+<pre>coverage_check_needed   BOOLEAN
+coverage_area           STRING(160)
+coverage_status         pending (Phase 2 default)</pre>
+
+<div class="page-break"></div>
+
+<h2>5. Adjustment 3 — lead_score (0–100)</h2>
+<table>
+<tr><th>Factor</th><th>Points</th></tr>
+<tr><td>Buying intent detected</td><td>+25</td></tr>
+<tr><td>Speed/package mentioned</td><td>+15</td></tr>
+<tr><td>Location/area mentioned</td><td>+15</td></tr>
+<tr><td>Budget mentioned</td><td>+10</td></tr>
+<tr><td>Urgency detected</td><td>+10</td></tr>
+<tr><td>Phone provided</td><td>+20</td></tr>
+<tr><td>WhatsApp number provided</td><td>+18</td></tr>
+<tr><td>Name provided</td><td>+5</td></tr>
+<tr><td>Telegram default contact</td><td>+5</td></tr>
+<tr><td>Coverage check flagged</td><td>+5</td></tr>
+<tr><td>Repeat buying within 24h</td><td>+5</td></tr>
+</table>
+
+<h3>Score → Stage mapping</h3>
+<table>
+<tr><th>Stage</th><th>Score</th><th>Rule</th></tr>
+<tr><td>new</td><td>25–39</td><td>Buying intent only</td></tr>
+<tr><td>interested</td><td>40–59</td><td>≥1 qualification signal</td></tr>
+<tr><td>qualified</td><td>60–79</td><td>contact reachable + (location OR speed)</td></tr>
+<tr><td>hot</td><td>80–100</td><td>qualified + urgency + contact_value</td></tr>
+</table>
+<p>Stage never downgrades. Score can increase on re-upsert.</p>
+
+<h2>6. Adjustment 4 — Admin Notification Placeholder</h2>
+<pre># env.example
+ADMIN_ALERT_ENABLED=false
+ADMIN_TELEGRAM_CHAT_ID=
+ADMIN_ALERT_MIN_SCORE=80
+ADMIN_ALERT_STAGES=hot,qualified</pre>
+<p><strong>admin_notifier.py</strong> — Phase 2: log-only when enabled. Phase 3: send to ADMIN_TELEGRAM_CHAT_ID.</p>
+<pre>logger.info("ADMIN_ALERT_PLACEHOLDER company_id=... lead_id=...
+  stage=... score=... contact_method=...")</pre>
+
+<h2>7. Adjustment 5 — Sales Conversation Memory</h2>
+<p>Stored on <strong>lead row</strong> (not user_memory):</p>
+<table>
+<tr><th>Field</th><th>Updated when</th></tr>
+<tr><td>last_discussed_product</td><td>Product matched or alternative proposed</td></tr>
+<tr><td>last_sales_question</td><td>User message in sales_mode</td></tr>
+<tr><td>last_sales_reply</td><td>Assistant reply in sales_mode (truncate 500 chars)</td></tr>
+</table>
+<pre>Recent sales conversation:
+- Last discussed product: 200 Mbps Internet Package
+- Customer last asked: 500 mbps chahiyo Baluwatar ma
+- Do not repeat full package list. Build on this context.</pre>
+
+<h2>8. Complete leads Table Schema</h2>
+<pre>leads
+  id, user_id, company_id
+  stage          — new | interested | qualified | hot
+  lead_score     — 0–100 (NEW)
+  customer_name, location, budget, requested_speed, phone
+  contact_method — telegram | phone | whatsapp (NEW)
+  contact_value  (NEW)
+  urgency, buying_intent
+  coverage_check_needed, coverage_area, coverage_status (NEW)
+  matched_product, alternative_product
+  last_discussed_product, last_sales_question, last_sales_reply (NEW)
+  source_message, signals_json
+  created_at, updated_at</pre>
+<p>Upsert: one active lead per (user_id, company_id), 30-day window.</p>
+
+<div class="page-break"></div>
+
+<h2>9. Files Plan</h2>
+<h3>Create (3)</h3>
+<ul>
+<li>lead_extractor.py — intent, signals, coverage, contact_method, score, stage</li>
+<li>lead_manager.py — CRUD, upsert, sales_memory, lead_to_prompt</li>
+<li>admin_notifier.py — ADMIN_ALERT_ENABLED placeholder (NEW)</li>
+</ul>
+<h3>Modify (7)</h3>
+<ul>
+<li>memory_db.py — Lead model (full schema)</li>
+<li>ai_employee_engine.py — full pipeline</li>
+<li>intent_engine.py — buying_intent, lead_qualification, coverage_inquiry</li>
+<li>prompts.py — lead_block, sales_memory_block, coverage rules</li>
+<li>products.py — find_best_product_match()</li>
+<li>env.example — LEAD_ACTIVE_DAYS, ADMIN_ALERT_*</li>
+<li>README_DEPLOY.md</li>
+</ul>
+<p><strong>Unchanged:</strong> main.py, openai_engine.py, company_manager.py, core memory.py</p>
+
+<h2>10. Combined Flow Example</h2>
+<pre>User: "Baluwatar ma 500 mbps internet jodnu cha"
+
+1. buying_intent=True
+2. coverage_check_needed=True, coverage_area="Baluwatar"
+3. No exact match; alternative=200 Mbps
+4. contact_method=telegram (default)
+5. lead_score ≈ 60 → stage=interested (until phone added)
+6. sales_mode=True — NO full package list
+7. Reply: acknowledge need, coverage check for Baluwatar,
+   suggest 200 Mbps alternative, ask phone/WhatsApp
+8. Update sales_memory on lead
+9. If score≥80 + ADMIN_ALERT_ENABLED → log placeholder</pre>
+
+<h2>11. Original Requirements — All Retained</h2>
+<table>
+<tr><th>#</th><th>Requirement</th><th>Status</th></tr>
+<tr><td>1</td><td>Buying intent (internet jodnu cha, etc.)</td><td>✓</td></tr>
+<tr><td>2</td><td>Lead signals: budget, location, speed, urgency</td><td>✓ + coverage</td></tr>
+<tr><td>3</td><td>Extract name, location, budget, speed</td><td>✓ + contact_method</td></tr>
+<tr><td>4</td><td>Save to lead_manager.py</td><td>✓</td></tr>
+<tr><td>5</td><td>Stages: new, qualified, interested, hot</td><td>✓ + lead_score</td></tr>
+<tr><td>6</td><td>Unavailable package: no list dump</td><td>✓</td></tr>
+<tr><td>7</td><td>Sales employee, not FAQ bot</td><td>✓ + sales_memory</td></tr>
+</table>
+
+<h2>12. Testing Checklist (v2)</h2>
+<table>
+<tr><th>#</th><th>Input</th><th>Expected</th></tr>
+<tr><td>1</td><td>Internet jodnu cha</td><td>score≥25, stage=new, contact=telegram</td></tr>
+<tr><td>2</td><td>Baluwatar ma 100 mbps</td><td>coverage_check_needed=True</td></tr>
+<tr><td>3</td><td>WhatsApp ma 9800000000</td><td>contact_method=whatsapp</td></tr>
+<tr><td>4</td><td>500 mbps chahiyo</td><td>no list dump; sales_memory updated</td></tr>
+<tr><td>5</td><td>name+phone+speed+urgency</td><td>score≥80, stage=hot</td></tr>
+<tr><td>6</td><td>ADMIN_ALERT_ENABLED=true + hot</td><td>ADMIN_ALERT_PLACEHOLDER log</td></tr>
+<tr><td>7</td><td>Second sales message</td><td>last_sales_* in prompt</td></tr>
+<tr><td>8</td><td>Support hours kati ho?</td><td>no lead</td></tr>
+</table>
+
+<h2>13. Implementation Order (~7–8 days)</h2>
+<table>
+<tr><th>Day</th><th>Task</th></tr>
+<tr><td>1</td><td>Lead model + lead_manager upsert/score/stage</td></tr>
+<tr><td>2</td><td>lead_extractor — all signals + score + coverage + contact</td></tr>
+<tr><td>3</td><td>products.py match + admin_notifier.py stub</td></tr>
+<tr><td>4</td><td>prompts.py — lead_block, sales_memory_block, coverage</td></tr>
+<tr><td>5</td><td>intent_engine + ai_employee_engine pipeline</td></tr>
+<tr><td>6</td><td>Sales memory loop + Telegram tests</td></tr>
+<tr><td>7</td><td>admin_export_leads.py + env/README</td></tr>
+<tr><td>8</td><td>Render deploy</td></tr>
+</table>
+<p><strong>Estimated:</strong> ~550–650 lines across 3 new + 7 modified files</p>
+
+<h2>14. Out of Scope</h2>
+<p>Admin dashboard · CRM webhook · Live WhatsApp channel · Vector search · Background worker · Alembic · Coverage API (Phase 3)</p>
+
+<h2>15. Final Approval</h2>
+<div class="new">
+<ol>
+<li>contact_method defaults to telegram — OK?</li>
+<li>coverage_check_needed ISP-aware (industry=isp) — OK?</li>
+<li>lead_score weights (§5) — OK?</li>
+<li>Admin placeholder log-only — OK?</li>
+<li>sales_memory on lead row — OK?</li>
+<li>admin_export_leads.py — include or defer?</li>
+</ol>
+<p>Reply <strong>approved</strong> to begin implementation.</p>
+</div>
+
+<div class="footer">Vyapar AI — Phase 2 Smart Lead Qualification Revised Plan v2 · June 2, 2026</div>
+</body>
+</html>

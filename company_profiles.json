@@ -1,0 +1,28 @@
+{
+  "hons": {
+    "company_id": "hons",
+    "company_name": "Himalayan Online Service Pvt. Ltd.",
+    "business_type": "Internet Service Provider",
+    "industry": "isp",
+    "location": "Head Kamal Pokhari, Kathmandu, Nepal",
+    "currency": "NPR",
+    "catalog_label": "products and services",
+    "contact": {
+      "phone": "+977-1-4541063",
+      "toll_free": "16600149520",
+      "email": "info@hons.com.np"
+    },
+    "support_hours": "6:00 AM to 7:00 PM",
+    "policies": {
+      "installation_charge": "Free",
+      "router": "Free",
+      "onu": "Free"
+    },
+    "rules": [
+      "Always identify the business by its official company name when needed.",
+      "Do not invent prices, billing status, or operational facts.",
+      "If pricing is requested, use only the product catalog loaded for this tenant.",
+      "For urgent support, provide the listed phone or toll-free number."
+    ]
+  }
+}

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+<meta charset="UTF-8"/>
+<title>Production Log Analysis — Vyapar AI | June 6, 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page { size: A4; margin: 12mm 11mm; }
+body { font-family: Inter, "Noto Sans Devanagari", sans-serif; font-size: 9pt; line-height: 1.48; color: #111; max-width: 210mm; margin: 0 auto; padding: 14px 16px 28px; }
+h1 { font-size: 17pt; color: #0f3460; border-bottom: 3px solid #e94560; padding-bottom: 5px; margin: 0 0 8px; }
+h2 { font-size: 11.5pt; color: #16213e; margin: 18px 0 7px; border-left: 4px solid #e94560; padding-left: 8px; page-break-after: avoid; }
+h3 { font-size: 9.5pt; color: #0f3460; margin: 10px 0 4px; }
+.meta { background: #f0f4f8; padding: 10px 12px; border-radius: 5px; font-size: 8.5pt; margin: 10px 0; }
+.badge-ok { background: #16a34a; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+.badge-fail { background: #dc2626; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+.badge-warn { background: #d97706; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; margin: 7px 0; font-size: 8pt; }
+th, td { border: 1px solid #cbd5e1; padding: 4px 7px; text-align: left; vertical-align: top; }
+th { background: #0f3460; color: #fff; }
+tr:nth-child(even) { background: #f8fafc; }
+.pass { color: #16a34a; font-weight: 700; }
+.fail { color: #dc2626; font-weight: 700; }
+.warn { color: #d97706; font-weight: 600; }
+pre { background: #1e293b; color: #e2e8f0; border-radius: 4px; padding: 8px 10px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 7pt; white-space: pre-wrap; page-break-inside: avoid; }
+.bug { background: #fff7ed; border-left: 4px solid #ea580c; padding: 8px 12px; margin: 8px 0; font-size: 8.5pt; }
+.fix { background: #ecfdf5; border-left: 4px solid #16a34a; padding: 8px 12px; margin: 8px 0; font-size: 8.5pt; }
+.page-break { page-break-before: always; }
+ul, ol { margin: 4px 0; padding-left: 18px; }
+.footer { margin-top: 18px; padding-top: 8px; border-top: 1px solid #cbd5e1; font-size: 7.5pt; color: #64748b; text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>Production Log Analysis — June 6, 2026</h1>
+<p><strong>Vyapar AI Employee — HONS Pilot</strong></p>
+
+<div class="meta">
+<p><strong>Log window:</strong> 2026-06-06 16:45 – 17:24 UTC &nbsp;|&nbsp; <strong>User:</strong> 2071979418</p>
+<p><strong>Deploy:</strong> <span class="badge-ok">LIVE</span> &nbsp;|&nbsp; <strong>Verdict:</strong> <span class="badge-warn">PARTIAL</span> Sales fixes OK; support routing broken</p>
+</div>
+
+<h2>1. Executive Summary</h2>
+<p>P0 sales/pricing fixes partially working. New critical gap: <strong>support and escalation messages route to general_knowledge</strong>, causing the bot to repeat the same contact numbers even when the user says calls were not answered. User frustration visible in Telegram screenshots ("dimag prayog gara").</p>
+
+<h2>2. Session Timeline (June 6 Logs)</h2>
+<table>
+<tr><th>Time (UTC)</th><th>User Message</th><th>Intent</th><th>Turn</th><th>Status</th></tr>
+<tr><td>16:45:57</td><td>Net gayo ta batti chhaina hamro tira.</td><td>general</td><td>general_knowledge</td><td class="fail">Should be support</td></tr>
+<tr><td>17:06:59</td><td>Tapaile dinu bhaeko num ma call received bhaena ta?</td><td>general</td><td>general_knowledge</td><td class="fail">Should be support/escalation</td></tr>
+<tr><td>17:07:50</td><td>Tala dieko num ma ta call gareko ta?</td><td>general</td><td>general_knowledge</td><td class="fail">Duplicate overlap=1.00</td></tr>
+<tr><td>17:09:55</td><td>Tapai alik paudhik dimag... call uthena ma ke garaun?</td><td>general</td><td>general_knowledge</td><td class="fail">Should be escalation</td></tr>
+</table>
+
+<h2>3. What Is Working</h2>
+<table>
+<tr><th>Check</th><th>Log Evidence</th></tr>
+<tr><td>Deploy / webhook</td><td class="pass">APP_STARTUP, TELEGRAM_WEBHOOK_SET, service live</td></tr>
+<tr><td>Fresh session state</td><td class="pass">phone_collected=False, pitch_count=0, keys=[]</td></tr>
+<tr><td>Language lock</td><td class="pass">language=nepali, locked=True</td></tr>
+<tr><td>No fallback spam</td><td class="pass">No RESPONSE_VALIDATOR_FALLBACK in session</td></tr>
+<tr><td>Validator pass</td><td class="pass">is_valid=True on all turns</td></tr>
+</table>
+
+<h2>4. Critical Bugs (June 6)</h2>
+
+<div class="bug"><strong>BUG-1: Support intent not detected</strong><br>
+Messages about outage, no electricity, call not answered → <code>intent=general</code>, <code>turn=general_knowledge</code>.<br>
+Missing patterns: net gayo, batti chhaina, call uthena, call received bhaena, call gare.</div>
+
+<div class="bug"><strong>BUG-2: Contact number repeat loop</strong><br>
+Log: <code>duplicate_response overlap=1.00</code> — bot sent identical reply with same +977-1-4541063 / toll-free again.<br>
+User explicitly said number did not work; bot repeated same numbers (see Telegram screenshot 10:52–10:54 PM).</div>
+
+<div class="bug"><strong>BUG-3: No escalation path</strong><br>
+Frustrated user ("dimag prayog gara") still gets generic troubleshooting + same contact list instead of escalation to human team.</div>
+
+<div class="page-break"></div>
+
+<h2>5. Screenshot Issues (June 5–6)</h2>
+<table>
+<tr><th>Issue</th><th>Example</th><th>Severity</th></tr>
+<tr><td>Language/script flip</td><td>"Nepali ma bhannus" → Roman, Devanagari, Roman mixed</td><td class="warn">P1</td></tr>
+<tr><td>False script claim</td><td>Bot says "Roman ma lekhna sakdina" while using Roman</td><td class="warn">P1</td></tr>
+<tr><td>Generic chitchat</td><td>"Garmi dherai chha" → hydration tips (not ISP-specific)</td><td class="warn">P2</td></tr>
+<tr><td>Contact loop</td><td>Call uthena → same number repeated 3 times</td><td class="fail">P0</td></tr>
+<tr><td>Info → sales attach</td><td>Internet barema sodhda → 100 Mbps pitch at end</td><td class="warn">P1</td></tr>
+<tr><td>FTTH / company info</td><td>Correct FTTH answer, contact details</td><td class="pass">OK</td></tr>
+</table>
+
+<h2>6. Root Cause Chain</h2>
+<pre>User: "call uthena, ke garaun?"
+  ↓
+detect_intent() → general          [no support patterns]
+  ↓
+route_turn() → general_knowledge
+  ↓
+LLM → same phone numbers + generic tips
+  ↓
+duplicate_response overlap=1.00  [sanitized but still sent]
+  ↓
+User: "dimag prayog gara"          [frustration]</pre>
+
+<h2>7. Recommended Fixes (Next Deploy)</h2>
+<table>
+<tr><th>P</th><th>Fix</th><th>File(s)</th></tr>
+<tr><td>P0</td><td>Support patterns: net gayo, batti chhaina, call uthena, call received bhaena</td><td>intent_engine.py, turn_router.py</td></tr>
+<tr><td>P0</td><td>Unreachable-contact → turn=escalation (no same number repeat)</td><td>turn_router.py, response_validator.py</td></tr>
+<tr><td>P0</td><td>Lead continuation: Pakka bhayo, Paisa kati, Okay → sales/follow_up</td><td>turn_router.py</td></tr>
+<tr><td>P1</td><td>Script lock: roman_nepali vs devanagari preference</td><td>language_lock.py, turn_router.py</td></tr>
+<tr><td>P1</td><td>secondary router → unknown_product (not sales pitch)</td><td>turn_router.py</td></tr>
+<tr><td>P2</td><td>Chitchat boundary: redirect non-ISP topics politely</td><td>prompts.py</td></tr>
+</table>
+
+<h2>8. Expected Logs After Fix</h2>
+<pre>INTENT_DETECTED intent=support text=Net gayo ta batti chhaina
+TURN_ROUTED turn=support reason=outage_report
+INTENT_DETECTED intent=support text=call uthena ma ke garaun
+TURN_ROUTED turn=escalation reason=contact_unreachable
+RESPONSE_VALIDATED turn=escalation is_valid=True (no duplicate contact)</pre>
+
+<h2>9. Security Reminder</h2>
+<p>Bot token visible in Render logs. Revoke via @BotFather → update Render env → redeploy.</p>
+
+<h2>10. Test Script (After Fix)</h2>
+<ol>
+<li>Net gayo ta batti chhaina hamro tira → support reply</li>
+<li>Tapaile dinu bhaeko num ma call received bhaena → escalation (not same number spam)</li>
+<li>Pakka bhayo, jadaan pathaidinus → sales (qualified lead)</li>
+<li>Nepali ma bhannus na → language_request, consistent script</li>
+<li>secondary router kati parchha → unknown_product</li>
+</ol>
+
+<div class="footer">
+Vyapar AI Employee — Production Log Analysis June 6 — Generated June 7, 2026<br>
+Workspace: Z:\Vyapar AI\cursor
+</div>
+
+</body>
+</html>

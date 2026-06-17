@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+<meta charset="UTF-8"/>
+<title>Telegram Re-Test Status — Vyapar AI | June 4, 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page { size: A4; margin: 12mm 11mm; }
+* { box-sizing: border-box; }
+body {
+  font-family: Inter, "Noto Sans Devanagari", sans-serif;
+  font-size: 9pt;
+  line-height: 1.48;
+  color: #111;
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 14px 16px 28px;
+}
+h1 { font-size: 17pt; color: #0f3460; border-bottom: 3px solid #e94560; padding-bottom: 5px; margin: 0 0 8px; }
+h2 { font-size: 11.5pt; color: #16213e; margin: 18px 0 7px; border-left: 4px solid #e94560; padding-left: 8px; page-break-after: avoid; }
+h3 { font-size: 9.5pt; color: #0f3460; margin: 10px 0 4px; }
+.meta { background: #f0f4f8; padding: 10px 12px; border-radius: 5px; font-size: 8.5pt; margin: 10px 0; }
+.verdict { background: #fef3c7; border: 2px solid #d97706; padding: 12px 14px; border-radius: 6px; margin: 14px 0; font-size: 9.5pt; }
+.verdict-red { background: #fef2f2; border-color: #dc2626; }
+.badge-pass { background: #16a34a; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+.badge-fail { background: #dc2626; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+.badge-partial { background: #d97706; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; margin: 7px 0; font-size: 8pt; }
+th, td { border: 1px solid #cbd5e1; padding: 4px 7px; text-align: left; vertical-align: top; }
+th { background: #0f3460; color: #fff; }
+tr:nth-child(even) { background: #f8fafc; }
+.pass { color: #16a34a; font-weight: 700; }
+.fail { color: #dc2626; font-weight: 700; }
+.partial { color: #d97706; font-weight: 600; }
+pre { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px 10px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 7pt; white-space: pre-wrap; page-break-inside: avoid; border-radius: 4px; }
+.fix { background: #ecfdf5; border-left: 4px solid #16a34a; padding: 8px 12px; margin: 8px 0; font-size: 8.5pt; }
+.bug { background: #fff7ed; border-left: 4px solid #ea580c; padding: 8px 12px; margin: 8px 0; font-size: 8.5pt; }
+code { font-family: "JetBrains Mono", Consolas, monospace; font-size: 7pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+.page-break { page-break-before: always; }
+ul, ol { margin: 4px 0; padding-left: 18px; }
+li { margin: 2px 0; }
+.footer { margin-top: 18px; padding-top: 8px; border-top: 1px solid #cbd5e1; font-size: 7.5pt; color: #64748b; text-align: center; }
+.chat { font-size: 8pt; margin: 6px 0; }
+.chat-user { color: #166534; }
+.chat-bot { color: #1e3a8a; }
+</style>
+</head>
+<body>
+
+<h1>Telegram Re-Test Status Report</h1>
+<p><strong>Vyapar AI Employee — HONS Pilot</strong></p>
+
+<div class="meta">
+<p><strong>Report date:</strong> June 4, 2026 &nbsp;|&nbsp; <strong>Test window:</strong> June 3, 2026 (7:32 PM – 8:35 PM)</p>
+<p><strong>Channel:</strong> Telegram &nbsp;|&nbsp; <strong>User:</strong> Khemraj Adhikari &nbsp;|&nbsp; <strong>Question:</strong> "Samasya ajhai ustai chha ta?"</p>
+<p><strong>Verdict:</strong> <span class="badge-partial">PARTIALLY FIXED</span> &nbsp; <span class="badge-fail">NOT FULLY RESOLVED</span></p>
+</div>
+
+<div class="verdict">
+<strong>Short answer (नेपाली):</strong> Naam save ra privacy jawaf <span class="pass">thik</span> bhayo. Tara language lock, generic fallback spam, meta/follow-up routing, ra English session ma Nepali fallback — <span class="fail">ajhai fail</span> cha. Code ma fix gariyo; production ma deploy nagari test garyo bhane ustai dekhincha.
+</div>
+
+<h2>1. Executive Summary</h2>
+<table>
+<tr><th>Category</th><th>Status</th><th>Notes</th></tr>
+<tr><td>Name memory</td><td class="pass">PASS</td><td>"Khemraj Adhikari" correctly saved; no 300 Mbps contamination</td></tr>
+<tr><td>Privacy / meta (data selling)</td><td class="pass">PASS</td><td>Reasonable Nepali reply using saved name</td></tr>
+<tr><td>Package sales (English)</td><td class="pass">PASS</td><td>100 Mbps package correctly quoted in English</td></tr>
+<tr><td>Follow-up ("Dinus na ta")</td><td class="fail">FAIL</td><td>Generic "confirmed jankari chaina" instead of helpful follow-up</td></tr>
+<tr><td>Meta ("Kasto kaaryakram chha?")</td><td class="fail">FAIL</td><td>Same generic fallback; role not explained</td></tr>
+<tr><td>Language lock (Okay / Hello)</td><td class="fail">FAIL</td><td>Nepali session → English after neutral words</td></tr>
+<tr><td>Meta language questions</td><td class="fail">FAIL</td><td>Claims "English letters ma bolna sakdina" while using Romanized Nepali</td></tr>
+<tr><td>500 Mbps objection (English)</td><td class="fail">FAIL</td><td>English user → Nepali fallback "Tapai ko concern bujhe"</td></tr>
+</table>
+
+<h2>2. Screenshot Conversation Timeline</h2>
+
+<h3>Session A — Nepali (7:32 – 7:39 PM)</h3>
+<div class="chat"><span class="chat-user">User:</span> Namaskar</div>
+<div class="chat"><span class="chat-bot">Bot:</span> Namaskar! … kehi vishesh jankari dina sakchu?</div>
+<div class="chat"><span class="chat-user">User:</span> Dinus na ta</div>
+<div class="chat"><span class="chat-bot">Bot:</span> <span class="fail">Yo barema ma sanga confirmed jankari chaina…</span></div>
+<div class="chat"><span class="chat-user">User:</span> Mero naam Khemraj Adhikari ho tapai ko?</div>
+<div class="chat"><span class="chat-bot">Bot:</span> <span class="pass">Dhanyabad Khemraj Adhikari! Naam save bhayo.</span></div>
+<div class="chat"><span class="chat-user">User:</span> Mero naam kina save garnu… bechnu hunchha kya?</div>
+<div class="chat"><span class="chat-bot">Bot:</span> <span class="pass">Naam save gareko ho, tara collect/bechne karyakram chaina.</span></div>
+<div class="chat"><span class="chat-user">User:</span> Kasto kaaryakram chha ta?</div>
+<div class="chat"><span class="chat-bot">Bot:</span> <span class="fail">Yo barema confirmed jankari chaina…</span></div>
+<div class="chat"><span class="chat-user">User:</span> Okay</div>
+<div class="chat"><span class="chat-bot">Bot:</span> <span class="fail">If you have any questions… (English)</span></div>
+
+<h3>Session B — Meta language (7:46 – 7:56 PM)</h3>
+<div class="chat"><span class="chat-user">User:</span> Tapai jina nepali bolera english letters ma translate garnu bhayeko?</div>
+<div class="chat"><span class="chat-bot">Bot:</span> <span class="fail">Ma Nepali ma matra bolchu, English letters ma translate garna sakdina.</span></div>
+<div class="chat"><span class="chat-user">User:</span> Hello</div>
+<div class="chat"><span class="chat-bot">Bot:</span> <span class="fail">Hello! Welcome to Himalayan Online Service… (full English)</span></div>
+
+<h3>Session C — English request (8:31 – 8:35 PM)</h3>
+<div class="chat"><span class="chat-user">User:</span> English ma kura garam na priya / Hello my dear</div>
+<div class="chat"><span class="chat-bot">Bot:</span> Sure! How can I assist… then <span class="fail">I do not have confirmed information…</span></div>
+<div class="chat"><span class="chat-user">User:</span> Share your packages</div>
+<div class="chat"><span class="chat-bot">Bot:</span> <span class="pass">100 Mbps Internet Package NPR 10,000…</span></div>
+<div class="chat"><span class="chat-user">User:</span> I need 500 mbps</div>
+<div class="chat"><span class="chat-bot">Bot:</span> <span class="fail">Tapai ko concern bujhe. Ma confirmed detail matra bhanchhu. (Nepali)</span></div>
+
+<div class="page-break"></div>
+
+<h2>3. Root Cause Analysis (Remaining Failures)</h2>
+
+<div class="bug"><strong>RC-1: Language lock wiped before DB save</strong><br>
+<code>resolve_session_language()</code> sets <code>language_locked=True</code> in memory.<br>
+<code>sync_session_state()</code> reloads from DB where <code>language_locked=False</code> → lock lost.<br>
+<strong>Effect:</strong> "Okay", "Hello", emoji flip Nepali ↔ English every turn.<br>
+<strong>Files:</strong> <code>language_lock.py</code>, <code>session_state_manager.py</code>, <code>ai_employee_engine.py</code></div>
+
+<div class="bug"><strong>RC-2: Missing turn routes for follow-up and meta</strong><br>
+"Dinus na ta" (affirmative after bot offer) and "Kasto kaaryakram chha?" (role question) fall through to <code>general_knowledge</code> → <code>build_fallback_reply()</code> spam.<br>
+<strong>Files:</strong> <code>turn_router.py</code>, <code>response_validator.py</code></div>
+
+<div class="bug"><strong>RC-3: Objection fallback ignores session language</strong><br>
+English session + unknown product (500 Mbps) → validator returns Nepali objection text.<br>
+<strong>File:</strong> <code>response_validator.py</code> — <code>build_fallback_reply()</code></div>
+
+<div class="bug"><strong>RC-4: Meta language handler contradicts output</strong><br>
+Bot outputs Romanized Nepali (Latin script) but claims it cannot use "English letters".<br>
+<strong>File:</strong> <code>turn_router.py</code> — <code>_meta_answer()</code> needs script/language distinction.</div>
+
+<h2>4. Fixes Applied (Local Workspace — June 4)</h2>
+
+<div class="fix"><strong>FIX-1: Persist language lock immediately</strong><br>
+After <code>resolve_session_language()</code>, call <code>save_session_state(session)</code> before <code>sync_session_state()</code>. Pass <code>language_locked</code> into sync to prevent wipe.<br>
+File: <code>ai_employee_engine.py</code></div>
+
+<div class="fix"><strong>FIX-2: Neutral words do not flip language</strong><br>
+Added <code>NEUTRAL_WORDS</code> (okay, hello, hi, namaste) — sticky lock preserved when locked.<br>
+Added pattern: <code>english ma kura garam</code> → force English lock.<br>
+File: <code>language_lock.py</code></div>
+
+<div class="fix"><strong>FIX-3: New turn types</strong><br>
+<code>follow_up</code> — affirmative replies ("Dinus na ta", "Thik cha")<br>
+<code>meta</code> — role, privacy, language/script questions<br>
+Files: <code>turn_router.py</code>, <code>ai_employee_engine.py</code> (NON_SALES_TURNS, turn hints)</div>
+
+<div class="fix"><strong>FIX-4: Turn-specific fallbacks</strong><br>
+Added Nepali + English fallbacks for <code>meta</code> and <code>follow_up</code> instead of generic "confirmed jankari chaina".<br>
+Fixed objection fallback to respect session language.<br>
+File: <code>response_validator.py</code></div>
+
+<div class="fix"><strong>FIX-5: Sales mode blocked on non-sales turns</strong><br>
+<code>NON_SALES_TURNS</code> frozenset prevents warm-lead sales injection on memory/meta/general turns.<br>
+File: <code>ai_employee_engine.py</code></div>
+
+<h2>5. Expected Behavior After Deploy</h2>
+<table>
+<tr><th>User Message</th><th>Expected Reply</th><th>Turn Route</th></tr>
+<tr><td>Dinus na ta</td><td>"Tapai lai ke chahiyo? Package, coverage, price, wa support?"</td><td>follow_up</td></tr>
+<tr><td>Kasto kaaryakram chha ta?</td><td>"Ma AI employee hu. Internet package, coverage, support…"</td><td>meta</td></tr>
+<tr><td>Okay (Nepali session)</td><td>Stays Nepali — no English switch</td><td>language_lock sticky</td></tr>
+<tr><td>English ma kura garam</td><td>All replies in English until user switches</td><td>language_request</td></tr>
+<tr><td>I need 500 mbps (English)</td><td>English: "No confirmed price for that item…"</td><td>unknown_product / objection</td></tr>
+<tr><td>Mero naam Khemraj Adhikari ho</td><td>"Naam save bhayo" — no Mbps mention</td><td>memory_write</td></tr>
+</table>
+
+<h2>6. Deploy Checklist</h2>
+<ol>
+<li><strong>Push all P0 files to GitHub</strong> — verify repo has: <code>turn_router.py</code>, <code>language_lock.py</code>, <code>response_validator.py</code>, <code>session_state_manager.py</code>, <code>memory_validator.py</code></li>
+<li><strong>Deploy atomically to Render</strong> — partial deploy caused import errors previously</li>
+<li><strong>Run DB migration</strong> on Postgres:<br>
+<code>docs/migrations/002_language_lock_coverage.sql</code></li>
+<li><strong>Restart service</strong> after deploy</li>
+<li><strong>Run tests:</strong> <code>python -m unittest discover -s tests -v</code></li>
+<li><strong>Re-test 8 messages</strong> in Telegram (see Section 7)</li>
+<li><strong>Check logs</strong> for: <code>LANGUAGE_LOCK_APPLIED</code>, <code>TURN_ROUTED turn=follow_up|meta</code></li>
+</ol>
+
+<h2>7. Re-Test Script (Telegram)</h2>
+<pre>1. Namaskar
+2. Dinus na ta
+3. Mero naam Khemraj Adhikari ho
+4. Kasto kaaryakram chha ta?
+5. Okay
+6. English ma kura garam na
+7. Share your packages → I need 500 mbps
+8. Tapai english letters ma kura kina garnubhayo?</pre>
+
+<h2>8. Changed Files (This Fix Batch)</h2>
+<pre>ai_employee_engine.py      — save language_locked; NON_SALES_TURNS; turn hints
+language_lock.py           — NEUTRAL_WORDS; sticky lock; english ma kura pattern
+turn_router.py             — follow_up, meta routes; _meta_answer()
+response_validator.py      — meta/follow_up fallbacks; language-aware objection
+session_state_manager.py   — language_locked on sync
+intent_engine.py           — general_knowledge before pricing
+memory_validator.py        — name-only validation
+docs/migrations/002_language_lock_coverage.sql</pre>
+
+<h2>9. Answer to "Samasya ajhai ustai chha ta?"</h2>
+<table>
+<tr><th>Aspect</th><th>Same as before?</th></tr>
+<tr><td>Name save / memory corruption</td><td class="pass">NO — improved</td></tr>
+<tr><td>Language flip on Okay/Hello</td><td class="fail">YES — until deploy</td></tr>
+<tr><td>Generic fallback spam</td><td class="fail">YES — until deploy</td></tr>
+<tr><td>English → Nepali on 500 Mbps</td><td class="fail">YES — until deploy</td></tr>
+<tr><td>Meta language contradiction</td><td class="fail">YES — partial fix in code</td></tr>
+</table>
+
+<p><strong>Conclusion:</strong> Problem is <em>partially</em> the same. Core P0 architecture exists; critical bugs are patched locally. Production will show same failures until full deploy + DB migration + restart.</p>
+
+<div class="footer">
+Vyapar AI Employee — Telegram Re-Test Status Report — Generated June 4, 2026<br>
+Workspace: Z:\Vyapar AI\cursor &nbsp;|&nbsp; Related: Telegram_Test_Failure_Analysis_June3.html
+</div>
+
+</body>
+</html>

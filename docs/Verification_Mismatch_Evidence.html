@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vyapar AI — Verification Mismatch Evidence</title>
+<style>
+  @page { margin: 16mm 14mm; }
+  body { font-family: Consolas, "Courier New", monospace; font-size: 8.5pt; color: #111; line-height: 1.4; padding: 20px; }
+  h1 { font-family: "Segoe UI", Arial, sans-serif; font-size: 15pt; color: #b71c1c; border-bottom: 2px solid #b71c1c; padding-bottom: 6px; }
+  h2 { font-family: "Segoe UI", Arial, sans-serif; font-size: 10pt; color: #333; margin-top: 18px; }
+  .meta { font-family: "Segoe UI", Arial, sans-serif; font-size: 9pt; color: #555; margin-bottom: 16px; }
+  pre { background: #f5f5f5; border: 1px solid #ccc; padding: 10px; white-space: pre-wrap; font-size: 8pt; }
+  table { font-family: "Segoe UI", Arial, sans-serif; border-collapse: collapse; width: 100%; font-size: 9pt; margin: 10px 0; }
+  th { background: #333; color: #fff; text-align: left; padding: 6px 10px; }
+  td { border: 1px solid #ccc; padding: 5px 10px; }
+  .yes { color: #2e7d32; font-weight: bold; }
+  .no { color: #b71c1c; font-weight: bold; }
+  .footer { font-family: "Segoe UI", Arial, sans-serif; font-size: 7pt; color: #888; margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Verification Mismatch — Evidence</h1>
+<p class="meta">Workspace: Z:\Vyapar AI\cursor &nbsp;|&nbsp; Date: June 3, 2026 &nbsp;|&nbsp; Issue: Local P0 files exist; GitHub does not contain them</p>
+
+<h2>1. Do these files physically exist in the local workspace?</h2>
+<p class="yes">YES — all 5 files exist on disk.</p>
+<pre>EXISTS|Z:\Vyapar AI\cursor\session_state_manager.py|7071 bytes
+EXISTS|Z:\Vyapar AI\cursor\turn_router.py|7285 bytes
+EXISTS|Z:\Vyapar AI\cursor\response_validator.py|5512 bytes
+EXISTS|Z:\Vyapar AI\cursor\language_lock.py|2451 bytes
+EXISTS|Z:\Vyapar AI\cursor\memory_validator.py|3763 bytes</pre>
+
+<h2>2. Exact full paths</h2>
+<pre>Z:\Vyapar AI\cursor\session_state_manager.py
+Z:\Vyapar AI\cursor\turn_router.py
+Z:\Vyapar AI\cursor\response_validator.py
+Z:\Vyapar AI\cursor\language_lock.py
+Z:\Vyapar AI\cursor\memory_validator.py</pre>
+
+<h2>3. Exact file sizes in bytes</h2>
+<table>
+<tr><th>File</th><th>Bytes</th></tr>
+<tr><td>session_state_manager.py</td><td>7071</td></tr>
+<tr><td>turn_router.py</td><td>7285</td></tr>
+<tr><td>response_validator.py</td><td>5512</td></tr>
+<tr><td>language_lock.py</td><td>2451</td></tr>
+<tr><td>memory_validator.py</td><td>3763</td></tr>
+</table>
+
+<h2>4. Directory listing</h2>
+<pre>Name                     Length FullName
+----                     ------ --------
+language_lock.py           2451 Z:\Vyapar AI\cursor\language_lock.py
+memory_validator.py        3763 Z:\Vyapar AI\cursor\memory_validator.py
+response_validator.py      5512 Z:\Vyapar AI\cursor\response_validator.py
+session_state_manager.py   7071 Z:\Vyapar AI\cursor\session_state_manager.py
+turn_router.py             7285 Z:\Vyapar AI\cursor\turn_router.py</pre>
+
+<h2>5. Are they committed to git?</h2>
+<p class="no">NO</p>
+<pre>where.exe git
+INFO: Could not find files for the given pattern(s).
+
+Test-Path "Z:\Vyapar AI\cursor\.git"
+.git MISSING</pre>
+
+<h2>6. Why not committed</h2>
+<ol style="font-family: Segoe UI, Arial, sans-serif; font-size: 9pt;">
+<li><code>Z:\Vyapar AI\cursor\</code> has no git repository (.git folder absent)</li>
+<li><code>git</code> executable not installed / not on PATH</li>
+<li><code>gh</code> executable not installed / not on PATH</li>
+<li>Phase 3 P0 files were written to local Cursor workspace only; never pushed to GitHub from this environment</li>
+</ol>
+
+<h2>7. Commit hash</h2>
+<p>N/A — not committed. No commit hash exists.</p>
+
+<h2>8. Git commit and push</h2>
+<p class="no">NOT EXECUTED — blocked by environment</p>
+<pre>git status
+The term 'git' is not recognized as the name of a cmdlet, function,
+script file, or operable program.</pre>
+
+<h2>After push (requested items)</h2>
+<table>
+<tr><th>Item</th><th>Value</th></tr>
+<tr><td>commit hash</td><td>N/A</td></tr>
+<tr><td>changed files list</td><td>N/A</td></tr>
+<tr><td>GitHub repository tree</td><td>N/A</td></tr>
+</table>
+
+<h2>Mismatch summary</h2>
+<table>
+<tr><th>Location</th><th>Status</th></tr>
+<tr><td>Local workspace Z:\Vyapar AI\cursor\</td><td class="yes">Files EXIST</td></tr>
+<tr><td>GitHub repository</td><td class="no">Files ABSENT (never pushed)</td></tr>
+</table>
+
+<div class="footer">
+Vyapar AI Employee — Verification Mismatch Evidence — Generated June 3, 2026
+</div>
+
+</body>
+</html>

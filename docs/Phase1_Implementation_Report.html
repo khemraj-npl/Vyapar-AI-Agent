@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+  <meta charset="UTF-8" />
+  <title>Phase 1 Implementation Report — Vyapar AI Employee Platform</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    @page { size: A4; margin: 16mm 14mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Noto Sans Devanagari", "Inter", sans-serif;
+      font-size: 10pt;
+      line-height: 1.5;
+      color: #1a1a2e;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 18px 22px 36px;
+    }
+    h1 { font-size: 19pt; color: #0f3460; border-bottom: 3px solid #e94560; padding-bottom: 6px; margin-top: 0; }
+    h2 { font-size: 12.5pt; color: #16213e; margin-top: 20px; border-left: 4px solid #e94560; padding-left: 10px; }
+    h3 { font-size: 10.5pt; color: #0f3460; margin-top: 14px; }
+    .meta { background: #f0f4f8; border-radius: 6px; padding: 12px 16px; margin: 14px 0; font-size: 9.5pt; }
+    .meta p { margin: 3px 0; }
+    .badge { display: inline-block; background: #16a34a; color: #fff; font-size: 8pt; padding: 2px 10px; border-radius: 10px; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 9pt; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #0f3460; color: #fff; }
+    tr:nth-child(even) { background: #f8fafc; }
+    pre { font-family: Consolas, monospace; font-size: 8pt; background: #f1f5f9; padding: 10px 12px; border-radius: 4px; border: 1px solid #e2e8f0; white-space: pre-wrap; }
+    code { font-family: Consolas, monospace; font-size: 8.5pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+    ul, ol { margin: 6px 0; padding-left: 20px; }
+    li { margin: 3px 0; }
+    .diagram { background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; font-family: Consolas, monospace; font-size: 8pt; white-space: pre-wrap; line-height: 1.4; }
+    .note { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px; margin: 10px 0; font-size: 9pt; }
+    .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #cbd5e1; font-size: 8.5pt; color: #64748b; text-align: center; }
+    .page-break { page-break-before: always; }
+  </style>
+</head>
+<body>
+
+<h1>Phase 1 Implementation Report</h1>
+<p><strong>Vyapar AI — Universal AI Employee Platform</strong></p>
+
+<div class="meta">
+  <p><strong>Status:</strong> <span class="badge">IMPLEMENTED</span></p>
+  <p><strong>Project:</strong> Z:\Vyapar AI\cursor</p>
+  <p><strong>Date:</strong> June 2, 2026</p>
+  <p><strong>Goal:</strong> Single-tenant MVP → multi-tenant-ready AI Employee foundation</p>
+  <p><strong>Note:</strong> HONS is test tenant only — code is industry-agnostic</p>
+</div>
+
+<h2>1. Executive Summary (संक्षipt)</h2>
+<p>
+  Phase 1 successfully converts the codebase from hardcoded HONS chatbot logic into a
+  <strong>tenant-aware Universal AI Employee foundation</strong>. All business data now flows through
+  <code>company_manager.py</code> from <code>company_profiles.json</code>.
+  Memory, Telegram, and OpenAI functionality are preserved.
+</p>
+
+<h2>2. Files Modified (7 + 1 doc)</h2>
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>company_profiles.json</code></td><td>Generic tenant schema: industry, policies, rules, enriched products</td></tr>
+  <tr><td><code>company_manager.py</code></td><td>Central business abstraction layer (full rewrite)</td></tr>
+  <tr><td><code>business_settings.py</code></td><td>Loads from company_manager; hardcoded HONS removed</td></tr>
+  <tr><td><code>products.py</code></td><td>Dynamic tenant catalog; generic catalog_label</td></tr>
+  <tr><td><code>ai_employee_engine.py</code></td><td>Tenant-aware via COMPANY_ID env</td></tr>
+  <tr><td><code>main.py</code></td><td>Startup validation + company_loaded on GET /</td></tr>
+  <tr><td><code>env.example</code></td><td>COMPANY_ID, COMPANY_PROFILES_FILE; stale BUSINESS_* removed</td></tr>
+  <tr><td><code>README_DEPLOY.md</code></td><td>Tenant deployment notes</td></tr>
+</table>
+
+<h3>Unchanged (Preserved)</h3>
+<p><code>memory.py</code>, <code>memory_db.py</code>, <code>memory_extractor.py</code>, <code>openai_engine.py</code>,
+Telegram webhook/polling, <code>intent_engine.py</code>, <code>knowledge_base.py</code>, <code>prompts.py</code></p>
+
+<h2>3. Migration Notes</h2>
+<table>
+  <tr><th>Topic</th><th>Detail</th></tr>
+  <tr><td>New env var</td><td><code>COMPANY_ID=hons</code> (default if unset — backward compatible)</td></tr>
+  <tr><td>Optional</td><td><code>COMPANY_PROFILES_FILE</code> overrides JSON path</td></tr>
+  <tr><td>JSON schema</td><td>New fields: company_id, industry, currency, catalog_label, policies, rules, product tags/description</td></tr>
+  <tr><td>Legacy JSON</td><td>Top-level installation_charge, router, onu still read via get_company_policies()</td></tr>
+  <tr><td>API change</td><td>business_context_to_prompt(company_id) requires company_id (internal only)</td></tr>
+  <tr><td>Backward compat</td><td>load_company() alias kept for get_company()</td></tr>
+  <tr><td>Multi-tenant</td><td>One COMPANY_ID per deployment instance (Phase 2 adds DB + admin)</td></tr>
+</table>
+
+<h2>4. company_manager.py — New API</h2>
+<pre>CompanyProfileError
+get_active_company_id()
+get_company(company_id)
+load_company(company_id)          # backward-compatible alias
+require_company(company_id)
+get_company_industry(company_id)
+get_company_contact(company_id)
+get_company_policies(company_id)
+get_company_rules(company_id)
+get_company_products(company_id)
+get_catalog_label(company_id)
+get_company_summary(company_id)
+_load_all_profiles()              # isolated for future DB swap</pre>
+
+<h2>5. File-by-File Diff Summary</h2>
+
+<h3>company_profiles.json</h3>
+<ul>
+  <li>HONS reframed as test tenant (industry: "isp")</li>
+  <li>Added policies, rules, product tags/description</li>
+  <li>No HONS-specific logic in code — data only</li>
+</ul>
+
+<h3>company_manager.py</h3>
+<ul>
+  <li>Central business abstraction layer</li>
+  <li>Product normalization: price formatting, auto-tags, duration</li>
+  <li>Rules from JSON or auto-derived from policies/contact</li>
+  <li>_load_all_profiles() isolated for Phase 2 DB migration</li>
+</ul>
+
+<h3>business_settings.py</h3>
+<ul>
+  <li>All 12 hardcoded constants removed</li>
+  <li>business_context_to_prompt(company_id) builds generic business block</li>
+</ul>
+
+<h3>products.py</h3>
+<ul>
+  <li>Static PRODUCTS list removed</li>
+  <li>Tenant-scoped search + prompt with generic catalog_label</li>
+</ul>
+
+<h3>ai_employee_engine.py</h3>
+<ul>
+  <li>generate_employee_reply(..., company_id=None) tenant-aware</li>
+  <li>Memory/direct recall works even if tenant misconfigured</li>
+  <li>Config error returned before OpenAI call on missing profile</li>
+</ul>
+
+<h3>main.py</h3>
+<ul>
+  <li>Startup: COMPANY_PROFILE_LOADED or COMPANY_PROFILE_MISSING log</li>
+  <li>GET / returns company_id and company_loaded</li>
+</ul>
+
+<div class="page-break"></div>
+
+<h2>6. Architecture After Phase 1</h2>
+<div class="diagram">COMPANY_ID (env)
+    ↓
+company_profiles.json  ←── SSOT (Phase 1)
+    ↓
+company_manager.py  ←── Central Business Abstraction Layer
+    ↓              ↓
+business_settings   products
+    ↓              ↓
+ai_employee_engine.py
+    ├── memory.py (unchanged)
+    ├── intent_engine + knowledge_base
+    └── openai_engine.py (unchanged)
+            ↓
+        Telegram (main.py)
+
+Future-compatible hooks:
+  • _load_all_profiles() → DB repository (Phase 2)
+  • company_id param → multi-channel routing (Phase 3+)
+  • get_company_rules() → workflow engine input
+  • get_company_products() → CRM / lead engine catalog</div>
+
+<h2>7. Error Handling</h2>
+<table>
+  <tr><th>Scenario</th><th>Behavior</th></tr>
+  <tr><td>COMPANY_ID missing</td><td>Defaults to "hons"</td></tr>
+  <tr><td>company_profiles.json missing</td><td>CompanyProfileError → user config error message</td></tr>
+  <tr><td>Unknown COMPANY_ID</td><td>Same — memory/direct recall still works</td></tr>
+  <tr><td>Company with no products</td><td>Prompt: "None confirmed in company profile"</td></tr>
+  <tr><td>Company with no rules</td><td>Auto-derived from policies, support hours, contact</td></tr>
+</table>
+
+<h2>8. Testing Checklist</h2>
+<table>
+  <tr><th>#</th><th>Test</th><th>Expected</th></tr>
+  <tr><td>1</td><td>COMPANY_ID=hons + pricing question</td><td>Products from JSON in reply</td></tr>
+  <tr><td>2</td><td>COMPANY_ID=invalid</td><td>"not configured yet" message</td></tr>
+  <tr><td>3</td><td>GET /</td><td>company_id, company_loaded: true/false</td></tr>
+  <tr><td>4</td><td>Startup logs</td><td>COMPANY_PROFILE_LOADED or MISSING</td></tr>
+  <tr><td>5</td><td>"Mero naam X ho" → "Mero naam ke ho?"</td><td>Memory works without tenant block</td></tr>
+  <tr><td>6</td><td>Telegram webhook/polling</td><td>Unchanged behavior</td></tr>
+  <tr><td>7</td><td>GET /healthz</td><td>Database healthy</td></tr>
+  <tr><td>8</td><td>Add 2nd tenant + new COMPANY_ID deploy</td><td>Different business context</td></tr>
+</table>
+
+<h2>9. Rollback Plan</h2>
+<ol>
+  <li><strong>Git:</strong> Revert modified files to previous commit</li>
+  <li><strong>Render:</strong> Remove COMPANY_ID env var (old code ignored it)</li>
+  <li><strong>No DB migration</strong> — memory schema unchanged; rollback is code-only</li>
+  <li>Keep JSON backup before adding new tenants</li>
+</ol>
+
+<h2>10. Technical Debt Remaining</h2>
+<table>
+  <tr><th>Item</th><th>Target Phase</th></tr>
+  <tr><td>JSON file as SSOT (no hot reload)</td><td>Phase 2 → DB</td></tr>
+  <tr><td>No company_id on memory tables</td><td>Phase 2</td></tr>
+  <tr><td>Sync SQLAlchemy in async path</td><td>Phase 2</td></tr>
+  <tr><td>Blocking webhook handler</td><td>Phase 2</td></tr>
+  <tr><td>company_profile.json duplicate file</td><td>Delete when ready</td></tr>
+  <tr><td>No automated tests</td><td>Phase 2</td></tr>
+  <tr><td>Keyword-only product/KB search</td><td>Phase 3+</td></tr>
+  <tr><td>No lead/workflow/CRM layers</td><td>Phase 3</td></tr>
+</table>
+
+<h2>11. Recommended Phase 2</h2>
+<ol>
+  <li><strong>DB tenant model</strong> — companies, company_products, company_knowledge tables</li>
+  <li><strong>Repository pattern</strong> — swap _load_all_profiles() without changing public API</li>
+  <li><strong>company_id on memory</strong> — tenant-scoped user data</li>
+  <li><strong>Alembic migrations</strong></li>
+  <li><strong>Admin API</strong> (authenticated CRUD — not full panel)</li>
+  <li><strong>Background worker</strong> — async webhook processing</li>
+  <li><strong>Second test tenant</strong> — e.g. hospital_demo industry seed</li>
+</ol>
+
+<h2>12. Quick Start</h2>
+<pre>COMPANY_ID=hons</pre>
+<p>Add new tenant: new key in <code>company_profiles.json</code> → deploy with matching <code>COMPANY_ID</code>.</p>
+
+<div class="note">
+  <strong>Strategic note:</strong> HONS is test data only. All code paths are tenant-generic and
+  industry-agnostic. Platform supports ISP, Hospital, School, Travel, Real Estate, Retail,
+  Banking, Insurance via JSON config — not code changes.
+</div>
+
+<div class="footer">
+  Vyapar AI Employee Platform — Phase 1 Implementation Report<br/>
+  Generated: June 2, 2026 | Version 1.0
+</div>
+
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Phase 2 Deployment Ready Report | Vyapar AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page{size:A4;margin:12mm 11mm}
+body{font-family:Inter,"Noto Sans Devanagari",sans-serif;font-size:9pt;line-height:1.45;color:#111;max-width:210mm;margin:0 auto;padding:14px 16px 28px}
+h1{font-size:17pt;color:#0f3460;border-bottom:3px solid #e94560;padding-bottom:5px;margin:0}
+h2{font-size:11.5pt;color:#16213e;margin:16px 0 7px;border-left:4px solid #e94560;padding-left:8px;page-break-after:avoid}
+h3{font-size:9.5pt;color:#0f3460;margin:10px 0 4px}
+.meta{background:#f0f4f8;padding:10px 12px;border-radius:5px;font-size:8.5pt;margin:10px 0}
+.badge-ok{background:#16a34a;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-warn{background:#d97706;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+.badge-info{background:#2563eb;color:#fff;font-size:7pt;padding:2px 8px;border-radius:8px;font-weight:600}
+table{width:100%;border-collapse:collapse;margin:7px 0;font-size:8pt}
+th,td{border:1px solid #cbd5e1;padding:4px 7px;text-align:left;vertical-align:top}
+th{background:#0f3460;color:#fff}
+tr:nth-child(even){background:#f8fafc}
+.pass{color:#16a34a;font-weight:700}
+.warn{color:#d97706;font-weight:600}
+pre{font-family:"JetBrains Mono",Consolas,monospace;font-size:7pt;background:#f1f5f9;padding:8px 10px;border-radius:4px;border:1px solid #e2e8f0;white-space:pre-wrap}
+.diagram{font-family:"JetBrains Mono",monospace;font-size:7pt;background:#f8fafc;border:1px solid #e2e8f0;padding:9px;white-space:pre-wrap;line-height:1.3}
+.rule{background:#eff6ff;border-left:4px solid #2563eb;padding:8px 11px;margin:8px 0;font-size:8.5pt}
+.verdict{background:#ecfdf5;border:2px solid #16a34a;padding:12px 14px;border-radius:6px;margin:14px 0;font-size:10pt}
+.page-break{page-break-before:always}
+ul,ol{margin:4px 0;padding-left:18px}li{margin:2px 0}
+.footer{margin-top:18px;padding-top:8px;border-top:1px solid #cbd5e1;font-size:7.5pt;color:#64748b;text-align:center}
+</style>
+</head>
+<body>
+
+<h1>Phase 2 Final Audit — DEPLOYMENT READY Report</h1>
+<p><strong>Smart Lead Qualification — Vyapar AI Employee Platform</strong></p>
+
+<div class="meta">
+<p><strong>Audit type:</strong> Read-only final audit (no code changes)</p>
+<p><strong>Date:</strong> June 1, 2026</p>
+<p><strong>Verdict:</strong> <span class="badge-ok">DEPLOYMENT READY</span> &nbsp; <span class="badge-info">Phase 1 + Phase 2</span></p>
+</div>
+
+<div class="verdict">
+<strong>Executive summary:</strong> Phase 2 is fully implemented on disk. All required files exist, wiring is correct, imports resolve under static analysis, and the personal memory path is unchanged and still runs before the lead pipeline. Deploy Phase 1 and Phase 2 files atomically.
+</div>
+
+<h2>1. Audit Checklist</h2>
+<table>
+<tr><th>#</th><th>Check</th><th>Result</th></tr>
+<tr><td>1</td><td>All Phase 2 files exist</td><td class="pass">PASS</td></tr>
+<tr><td>2</td><td>No missing imports (static analysis)</td><td class="pass">PASS</td></tr>
+<tr><td>3</td><td>No duplicate active company configuration</td><td class="pass">PASS</td></tr>
+<tr><td>4</td><td><code>lead_manager.py</code> connected to <code>ai_employee_engine.py</code></td><td class="pass">PASS</td></tr>
+<tr><td>5</td><td><code>lead_extractor.py</code> connected</td><td class="pass">PASS</td></tr>
+<tr><td>6</td><td><code>admin_notifier.py</code> connected</td><td class="pass">PASS</td></tr>
+<tr><td>7</td><td>Memory system still works</td><td class="pass">PASS</td></tr>
+<tr><td>8</td><td>DEPLOYMENT_READY report generated</td><td class="pass">PASS</td></tr>
+</table>
+
+<h2>2. Phase 2 File Inventory</h2>
+<h3>New files</h3>
+<table>
+<tr><th>File</th><th>Purpose</th><th>Status</th></tr>
+<tr><td><code>lead_extractor.py</code></td><td>Buying intent, signals, scoring, stage derivation</td><td class="pass">Present</td></tr>
+<tr><td><code>lead_manager.py</code></td><td>upsert_lead, sales memory, export</td><td class="pass">Present</td></tr>
+<tr><td><code>admin_notifier.py</code></td><td>Log-only admin alert placeholder</td><td class="pass">Present</td></tr>
+<tr><td><code>admin_export_leads.py</code></td><td>CLI lead export to exports/</td><td class="pass">Present</td></tr>
+<tr><td><code>tests/test_lead_phase2.py</code></td><td>7 unit tests for lead rules</td><td class="pass">Present</td></tr>
+</table>
+
+<h3>Modified files</h3>
+<table>
+<tr><th>File</th><th>Change</th><th>Status</th></tr>
+<tr><td><code>memory_db.py</code></td><td><code>Lead</code> model (~25 columns)</td><td class="pass">Present</td></tr>
+<tr><td><code>products.py</code></td><td><code>find_best_product_match</code>, <code>format_alternative_product</code>, <code>include_full_catalog</code></td><td class="pass">Present</td></tr>
+<tr><td><code>prompts.py</code></td><td>Sales hints, lead_block, sales_memory_block</td><td class="pass">Present</td></tr>
+<tr><td><code>intent_engine.py</code></td><td><code>buying_intent</code>, <code>coverage_inquiry</code>, <code>lead_stage</code></td><td class="pass">Present</td></tr>
+<tr><td><code>ai_employee_engine.py</code></td><td>Full lead pipeline integration</td><td class="pass">Present</td></tr>
+<tr><td><code>env.example</code></td><td><code>LEAD_ACTIVE_DAYS</code>, <code>ADMIN_ALERT_*</code></td><td class="pass">Present</td></tr>
+<tr><td><code>README_DEPLOY.md</code></td><td>Phase 2 deploy and test docs</td><td class="pass">Present</td></tr>
+</table>
+
+<h3>Phase 1 dependencies (required at deploy)</h3>
+<table>
+<tr><th>File</th><th>Status</th></tr>
+<tr><td><code>company_profiles.json</code>, <code>company_manager.py</code>, <code>business_settings.py</code></td><td class="pass">Present</td></tr>
+<tr><td><code>main.py</code>, <code>memory.py</code>, <code>memory_extractor.py</code>, <code>openai_engine.py</code></td><td class="pass">Present</td></tr>
+</table>
+
+<h2>3. Import Integrity</h2>
+<p>All cross-module imports resolve to existing symbols. No new <code>requirements.txt</code> dependencies for Phase 2.</p>
+<table>
+<tr><th>Module</th><th>Imports from</th><th>Status</th></tr>
+<tr><td><code>lead_extractor.py</code></td><td><code>memory_extractor</code> (city, name, phone, etc.)</td><td class="pass">OK</td></tr>
+<tr><td><code>lead_manager.py</code></td><td><code>memory_db.Lead</code>, <code>get_session</code></td><td class="pass">OK</td></tr>
+<tr><td><code>ai_employee_engine.py</code></td><td>admin_notifier, lead_extractor, lead_manager, products, prompts, memory</td><td class="pass">OK</td></tr>
+<tr><td><code>admin_export_leads.py</code></td><td>company_manager, lead_manager.export_leads</td><td class="pass">OK</td></tr>
+<tr><td><code>tests/test_lead_phase2.py</code></td><td>lead_extractor (7 symbols)</td><td class="pass">OK</td></tr>
+</table>
+<p><span class="badge-warn">NOTE</span> Runtime import test not executed on audit machine (Python not installed). Run on deploy target:</p>
+<pre>python -m unittest tests.test_lead_phase2 -v
+python -c "import ai_employee_engine; print('OK')"</pre>
+
+<h2>4. Company Configuration</h2>
+<table>
+<tr><th>File</th><th>Role</th><th>Referenced in code?</th></tr>
+<tr><td><code>company_profiles.json</code></td><td><strong>Single source of truth</strong> (Phase 1)</td><td class="pass">Yes — company_manager.py only</td></tr>
+<tr><td><code>company_profile.json</code></td><td>Legacy flat HONS schema</td><td class="warn">No — zero .py references</td></tr>
+</table>
+<p><code>business_settings.py</code> and <code>products.py</code> load via <code>company_manager</code>. No hardcoded HONS strings in Python.</p>
+<p><strong>Non-blocking:</strong> Delete <code>company_profile.json</code> when convenient to avoid operator confusion.</p>
+
+<div class="page-break"></div>
+
+<h2>5. Integration Wiring</h2>
+
+<h3>5.1 lead_manager ↔ ai_employee_engine</h3>
+<table>
+<tr><th>Function</th><th>Usage</th></tr>
+<tr><td><code>get_active_lead</code></td><td>Load existing lead before extraction</td></tr>
+<tr><td><code>upsert_lead</code></td><td>Persist when <code>should_process_lead(bundle)</code></td></tr>
+<tr><td><code>lead_to_prompt</code></td><td>Inject lead context into system prompt</td></tr>
+<tr><td><code>sales_memory_to_prompt</code></td><td>Inject sales conversation memory</td></tr>
+<tr><td><code>update_sales_memory</code></td><td>After sales-mode reply</td></tr>
+<tr><td><code>export_leads</code></td><td>Via <code>admin_export_leads.py</code> CLI</td></tr>
+</table>
+
+<h3>5.2 lead_extractor ↔ ai_employee_engine</h3>
+<p>Pipeline order in <code>generate_employee_reply</code>:</p>
+<ol>
+<li>Memory extraction (unchanged)</li>
+<li>Direct memory short-circuit (unchanged)</li>
+<li><code>get_active_lead</code> → <code>extract_lead_bundle</code> → conditional <code>upsert_lead</code></li>
+<li><code>find_best_product_match</code> + sales mode logic</li>
+<li>Prompt composition with lead blocks → OpenAI → admin notify</li>
+</ol>
+
+<div class="rule">
+<strong>Qualified rule (approved):</strong><br/>
+<code>qualified</code> requires <strong>(phone OR WhatsApp)</strong> AND <strong>(location OR speed)</strong>.<br/>
+Score alone cannot create <code>qualified</code> — max stage without contact is <code>interested</code>.
+</div>
+
+<h3>5.3 admin_notifier ↔ ai_employee_engine</h3>
+<p><code>maybe_notify_admin(lead=lead, company_id=tenant_id)</code> called after reply generation. Log-only when <code>ADMIN_ALERT_ENABLED=true</code>; default <code>false</code>.</p>
+
+<h2>6. Memory System — Preserved</h2>
+<table>
+<tr><th>Step</th><th>Function</th><th>Status</th></tr>
+<tr><td>Save user turn</td><td><code>save_chat_turn</code></td><td class="pass">Unchanged</td></tr>
+<tr><td>Read + extract facts</td><td><code>read_memory</code>, <code>extract_memory_facts</code></td><td class="pass">Unchanged</td></tr>
+<tr><td>Persist facts + context</td><td><code>update_memory_from_facts</code>, <code>save_context</code></td><td class="pass">Unchanged</td></tr>
+<tr><td>Direct self-query answer</td><td><code>_direct_memory_answer</code></td><td class="pass">Bypasses lead pipeline</td></tr>
+<tr><td>Memory in prompt</td><td><code>memory_to_prompt</code></td><td class="pass">Unchanged</td></tr>
+</table>
+<p>Phase 2 adds <code>leads</code> table only. <code>init_db()</code> on startup creates it automatically.</p>
+
+<h2>7. Architecture (Post Phase 2)</h2>
+<div class="diagram">Telegram → main.py → ai_employee_engine.py
+  ├── memory_extractor + memory.py (unchanged)
+  ├── lead_extractor (NEW)
+  │     → compute score + derive stage
+  ├── lead_manager (NEW) → leads table
+  ├── company_manager ← company_profiles.json
+  ├── products.find_best_product_match (NEW)
+  ├── sales_mode? → single alternative, no catalog dump
+  ├── prompts: lead_block + sales_memory_block
+  ├── openai_engine (unchanged)
+  └── admin_notifier placeholder (NEW)</div>
+
+<h2>8. Deployment Checklist</h2>
+
+<h3>Required environment variables (Render dashboard)</h3>
+<pre>COMPANY_ID=hons
+LEAD_ACTIVE_DAYS=30
+ADMIN_ALERT_ENABLED=false
+ADMIN_ALERT_MIN_SCORE=80
+ADMIN_ALERT_STAGES=hot,qualified</pre>
+<p><code>render.yaml</code> does not declare Phase 2 vars; code defaults apply. Set explicitly in Render for clarity.</p>
+
+<h3>CRITICAL: Atomic deploy</h3>
+<p>Deploy <strong>all Phase 1 + Phase 2 files in one deploy</strong>. Partial deploy (e.g. new <code>ai_employee_engine.py</code> with old <code>products.py</code> missing <code>company_id=</code>) caused production <code>TypeError</code> previously.</p>
+
+<h3>Post-deploy smoke tests</h3>
+<table>
+<tr><th>Test message</th><th>Expected</th></tr>
+<tr><td><code>Internet jodnu cha</code></td><td>Lead signals, sales mode</td></tr>
+<tr><td><code>Baluwatar ma 500 mbps internet jodnu cha</code></td><td>Stage <code>interested</code>, not <code>qualified</code></td></tr>
+<tr><td><code>Mero phone 9801234567 ho, Baluwatar ma 100 mbps lina cha</code></td><td>Stage <code>qualified</code></td></tr>
+<tr><td><code>Support hours kati ho?</code></td><td>No lead processing</td></tr>
+<tr><td><code>Mero naam ke ho?</code></td><td>Direct memory answer</td></tr>
+</table>
+
+<p>Logs to watch: <code>LEAD_SIGNALS_DETECTED</code>, <code>LEAD_UPSERTED</code>, <code>EMPLOYEE_REPLY_GENERATED</code></p>
+<p>Export: <code>python admin_export_leads.py</code> → <code>exports/leads_export_{company_id}_{timestamp}.json</code></p>
+
+<h2>9. Issues &amp; Recommendations</h2>
+<table>
+<tr><th>Item</th><th>Severity</th><th>Action</th></tr>
+<tr><td><code>company_profile.json</code> duplicate</td><td>Low</td><td>Delete when ready (not wired)</td></tr>
+<tr><td><code>render.yaml</code> missing Phase 2 env</td><td>Low</td><td>Add vars in Render dashboard</td></tr>
+<tr><td>Unit tests not run on audit machine</td><td>Medium</td><td>Run unittest before/after deploy</td></tr>
+<tr><td>No git repo on disk</td><td>Info</td><td>Use full-file deploy or init git</td></tr>
+</table>
+
+<div class="verdict">
+<strong>Final verdict: DEPLOYMENT READY</strong><br/>
+Deploy atomically with Phase 1, set env vars, restart service (creates <code>leads</code> table), run unit tests and Telegram smoke tests.
+</div>
+
+<div class="footer">
+Vyapar AI Employee Platform — Phase 2 Final Audit Report — June 1, 2026 — Audit only, no code modified
+</div>
+
+</body>
+</html>

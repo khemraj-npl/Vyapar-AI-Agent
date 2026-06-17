@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+<meta charset="UTF-8"/>
+<title>Render Log Bug Analysis — Vyapar AI | June 4, 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+@page { size: A4; margin: 12mm 11mm; }
+* { box-sizing: border-box; }
+body {
+  font-family: Inter, "Noto Sans Devanagari", sans-serif;
+  font-size: 9pt;
+  line-height: 1.48;
+  color: #111;
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 14px 16px 28px;
+}
+h1 { font-size: 17pt; color: #b71c1c; border-bottom: 3px solid #b71c1c; padding-bottom: 5px; margin: 0 0 8px; }
+h2 { font-size: 11.5pt; color: #0f3460; margin: 18px 0 7px; border-left: 4px solid #e94560; padding-left: 8px; page-break-after: avoid; }
+h3 { font-size: 9.5pt; color: #16213e; margin: 10px 0 4px; }
+.meta { background: #f0f4f8; padding: 10px 12px; border-radius: 5px; font-size: 8.5pt; margin: 10px 0; }
+.verdict { background: #fef2f2; border: 2px solid #dc2626; padding: 12px 14px; border-radius: 6px; margin: 14px 0; font-size: 9.5pt; }
+.badge-p0 { background: #dc2626; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+.badge-p1 { background: #d97706; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+.badge-p2 { background: #2563eb; color: #fff; font-size: 7pt; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; margin: 7px 0; font-size: 8pt; }
+th, td { border: 1px solid #cbd5e1; padding: 4px 7px; text-align: left; vertical-align: top; }
+th { background: #0f3460; color: #fff; }
+tr:nth-child(even) { background: #f8fafc; }
+pre { background: #1e293b; color: #e2e8f0; border-radius: 4px; padding: 8px 10px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 7pt; white-space: pre-wrap; page-break-inside: avoid; }
+code { font-family: "JetBrains Mono", Consolas, monospace; font-size: 7pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+.bug { background: #fff7ed; border-left: 4px solid #ea580c; padding: 8px 12px; margin: 8px 0; font-size: 8.5pt; }
+.fix { background: #ecfdf5; border-left: 4px solid #16a34a; padding: 8px 12px; margin: 8px 0; font-size: 8.5pt; }
+.page-break { page-break-before: always; }
+ul, ol { margin: 4px 0; padding-left: 18px; }
+li { margin: 2px 0; }
+.footer { margin-top: 18px; padding-top: 8px; border-top: 1px solid #cbd5e1; font-size: 7.5pt; color: #64748b; text-align: center; }
+.flow { background: #f8fafc; border: 1px solid #cbd5e1; padding: 10px; font-family: "JetBrains Mono", monospace; font-size: 7pt; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Render Log Bug Analysis Report</h1>
+<p><strong>Vyapar AI Employee — Production Telegram Session</strong></p>
+
+<div class="meta">
+<p><strong>Report date:</strong> June 4, 2026 &nbsp;|&nbsp; <strong>Source:</strong> Render dashboard logs (Vyapar-AI-Agent)</p>
+<p><strong>Test window:</strong> June 4, 03:23 AM – 03:31 AM &nbsp;|&nbsp; <strong>User ID:</strong> 2071979418 &nbsp;|&nbsp; <strong>Tenant:</strong> hons</p>
+<p><strong>Verdict:</strong> <span class="badge-p0">7 BUGS FOUND</span> &nbsp; 3 core bugs explain all log failures</p>
+</div>
+
+<div class="verdict">
+<strong>Executive summary (नेपाली):</strong> Render logs ma dekhine sabai failures 3 core bugs bata aaunchhan:
+(1) <code>"hi"</code> substring le Nepali shabd lai greeting samjhincha,
+(2) Telegram user_id lai phone jastai save gari <code>phone_collected=True</code> huncha,
+(3) Response validator le valid identity/meta jawaf pani reject garera generic fallback dincha.
+Yo 3 fix garepachhi dherai improve hunchha.
+</div>
+
+<h2>1. Log → Bug Quick Map</h2>
+<table>
+<tr><th>Log Evidence</th><th>Bug ID</th><th>Severity</th></tr>
+<tr><td><code>phone_collected=True</code> (no phone in user text)</td><td>BUG-1</td><td><span class="badge-p0">P0</span></td></tr>
+<tr><td><code>intent=greeting</code> on "chahiyo", "mahinako", "bujhina"</td><td>BUG-2</td><td><span class="badge-p0">P0</span></td></tr>
+<tr><td><code>turn=greeting</code> on "3 Mahinako kati ho?"</td><td>BUG-2</td><td><span class="badge-p0">P0</span></td></tr>
+<tr><td><code>turn=general_knowledge</code> on "100 Mbps rakhchhu"</td><td>BUG-3</td><td><span class="badge-p1">P1</span></td></tr>
+<tr><td><code>catalog_in_non_sales_turn</code> on company_info</td><td>BUG-4</td><td><span class="badge-p0">P0</span></td></tr>
+<tr><td><code>turn=general_knowledge</code> on "Nepali ma bhannus na"</td><td>BUG-5</td><td><span class="badge-p1">P1</span></td></tr>
+<tr><td><code>has_location=False</code> on "Banepama jodnu chha"</td><td>BUG-6</td><td><span class="badge-p1">P1</span></td></tr>
+<tr><td><code>duplicate_response overlap=0.73</code></td><td>BUG-7</td><td><span class="badge-p2">P2</span></td></tr>
+</table>
+
+<h2>2. Conversation Timeline (From Logs)</h2>
+<table>
+<tr><th>Time</th><th>User Message</th><th>Intent (Wrong)</th><th>Turn</th><th>Issue</th></tr>
+<tr><td>03:23</td><td>bujhina maile</td><td>greeting</td><td>greeting</td><td>Should be correction</td></tr>
+<tr><td>03:24</td><td>Net jodnu thiyo bhaneko maile</td><td>greeting</td><td>greeting</td><td>Should be buying_intent</td></tr>
+<tr><td>03:24</td><td>Ghar ma jodne ho mero</td><td>general</td><td>general_knowledge</td><td>"Jodne" name reject (OK)</td></tr>
+<tr><td>03:25</td><td>Ke janakari?</td><td>general</td><td>general_knowledge</td><td>duplicate_response fallback</td></tr>
+<tr><td>03:25</td><td>Net jodnu chha kya mero gharama</td><td>buying_intent</td><td>sales</td><td>phone_collected=True (BUG-1)</td></tr>
+<tr><td>03:26</td><td>3 Mahinako kati ho?</td><td>greeting</td><td>greeting</td><td>Should be pricing (BUG-2)</td></tr>
+<tr><td>03:26</td><td>Nepali ma bhannus na</td><td>general</td><td>general_knowledge</td><td>Should be language_request</td></tr>
+<tr><td>03:27</td><td>Banepama jodnu chha</td><td>buying_intent</td><td>sales</td><td>has_location=False (BUG-6)</td></tr>
+<tr><td>03:28</td><td>500 Mbps chahiyo</td><td>greeting</td><td>greeting</td><td>Should be sales (BUG-2+3)</td></tr>
+<tr><td>03:29</td><td>Tapaiko naam ke ho?</td><td>general</td><td>company_info</td><td>catalog_in_non_sales_turn</td></tr>
+<tr><td>03:30</td><td>100 Mbps rakhchhu ma</td><td>general</td><td>general_knowledge</td><td>Should be sales (BUG-3)</td></tr>
+<tr><td>03:31</td><td>Haina hola</td><td>general</td><td>correction</td><td>catalog_in_non_sales_turn</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>3. Bug Details</h2>
+
+<h3>BUG-1 <span class="badge-p0">P0</span> — phone_collected=True Without Real Phone</h3>
+<div class="bug">
+<strong>Log:</strong> <code>SESSION_STATE_SYNCED phone_collected=False</code> → LEAD_SIGNALS → <code>phone_collected=True</code><br>
+<strong>User text:</strong> "Net jodnu chha kya mero gharama" (no phone number)
+</div>
+<p><strong>Root cause:</strong> Telegram <code>user_id</code> is stored as <code>contact_value</code>, then treated as phone.</p>
+<pre>// lead_extractor.py — detect_contact_method()
+if channel == "telegram" and user_id:
+    return "telegram", str(user_id)   // ← 2071979418 stored as contact
+
+// session_state_manager.py — sync_session_state()
+phone = lead.contact_value   // ← telegram ID treated as phone
+if phone:
+    state.phone_collected = True</pre>
+<p><strong>Effect:</strong> Bot stops asking for phone. <code>repeated_phone_request</code> warnings. Real lead qualification broken.</p>
+<div class="fix"><strong>Fix:</strong> Only set <code>phone_collected=True</code> when a valid Nepal mobile (98/97xxxxxxxx) is extracted. Telegram user_id ≠ phone.</div>
+
+<h3>BUG-2 <span class="badge-p0">P0</span> — "hi" Substring False Greeting</h3>
+<div class="bug">
+<strong>Log:</strong> <code>INTENT_DETECTED intent=greeting</code> on messages containing Nepali words with "hi" inside.
+</div>
+<pre>// intent_engine.py — detect_intent()
+if any(word in t for word in ["hello", "hi", "namaste", ...]):
+    return "greeting"
+
+// False positives:
+"hi" in "chahiyo"   → True  (500 Mbps chahiyo)
+"hi" in "mahinako"  → True  (3 Mahinako kati ho?)
+"hi" in "bujhina"   → True  (bujhina maile)
+"hi" in "thiyo"     → True  (jodnu thiyo)</pre>
+<p><strong>Effect:</strong> Pricing, buying, correction all routed to <code>turn=greeting</code> with <code>suppress_catalog=True</code> → validator fails → generic fallback.</p>
+<div class="fix"><strong>Fix:</strong> Use word-boundary regex: <code>r"\b(?:hello|hi|hey|namaste|namaskar)\b"</code></div>
+
+<h3>BUG-3 <span class="badge-p1">P1</span> — Incomplete Buying Intent Patterns</h3>
+<div class="bug">
+<strong>Log:</strong> Clear purchase intent not detected as buying/sales.
+</div>
+<pre>Missing patterns in intent_engine.py / lead_extractor.py:
+  "jodnu thiyo"        → jodn[u]? chh?[au] only (not thiyo)
+  "500 Mbps chahiyo"   → no chahiyo pattern
+  "100 Mbps rakhchhu"  → no rakhchhu/linu pattern
+  "net jodnu chha kya" → partial match only</pre>
+<div class="fix"><strong>Fix:</strong> Add patterns: <code>chahiy[oō]</code>, <code>thiyo</code>, <code>rakhchhu</code>, <code>\d+\s*mbps</code>, <code>jodnu\s+chha</code></div>
+
+<h3>BUG-4 <span class="badge-p0">P0</span> — Validator Rejects Valid Direct Answers</h3>
+<div class="bug">
+<strong>Log:</strong> <code>RESPONSE_VALIDATED is_valid=False issues=['catalog_in_non_sales_turn']</code> on company_info, correction, general_knowledge turns.
+</div>
+<pre>// turn_router.py — _ai_identity_answer()
+"Ma {name} ko AI employee hu. Tapailai internet package, coverage..."
+
+// response_validator.py — PITCH_PATTERNS
+r"internet\s+package"   ← matches identity answer itself!
+
+// ai_employee_engine.py — direct answers also go through _finalize_reply()
+→ validator rejects → build_fallback_reply() → generic spam</pre>
+<p><strong>Effect:</strong> "Tapaiko naam ke ho?" → valid identity answer rejected → "confirmed jankari chaina".</p>
+<div class="fix"><strong>Fix:</strong> Skip catalog check for <code>direct_answer</code> turns, OR remove "internet package" from PITCH_PATTERNS for company_info/meta turns, OR use softer patterns (require Mbps/NPR digits).</div>
+
+<h3>BUG-5 <span class="badge-p1">P1</span> — Language Request Route Miss</h3>
+<div class="bug">
+<strong>Log:</strong> "Nepali ma bhannus na" → <code>turn=general_knowledge</code> (not language_request)
+</div>
+<pre>// turn_router.py LANGUAGE_REQUEST_PATTERNS
+r"nepali\s+(?:ma)\s+(?:type|lakh|bol|kura)"  ← missing bhannus/bhannu
+
+// language_lock.py NEPALI_LOCK_REQUEST (has bhan but turn_router doesn't)
+r"nepali\s+(?:ma)\s+(?:type|lakh|bol|bhan)"</pre>
+<div class="fix"><strong>Fix:</strong> Add <code>bhannu|bhannus|bol</code> to turn_router LANGUAGE_REQUEST_PATTERNS. Sync with language_lock.py.</div>
+
+<h3>BUG-6 <span class="badge-p1">P1</span> — Location Extract Fail (Banepa)</h3>
+<div class="bug">
+<strong>Log:</strong> "Banepama jodnu chha" → <code>has_location=False</code>, all location signals None.
+</div>
+<pre>// memory_extractor.py CITY_ALIASES — Banepa NOT listed
+// lead_extractor.py extract_location()
+r"\b([A-Za-z]+)\s+ma\b"  ← requires space before "ma"
+"Banepama" (one word) → no match</pre>
+<div class="fix"><strong>Fix:</strong> Add banepa to CITY_ALIASES. Add pattern <code>banepa\s*ma</code>. Handle common typo "Banepama".</div>
+
+<h3>BUG-7 <span class="badge-p2">P2</span> — Fallback Duplicate Loop</h3>
+<div class="bug">
+<strong>Log:</strong> <code>duplicate_response overlap=0.73</code> → RESPONSE_VALIDATOR_FALLBACK → same generic text again.
+</div>
+<div class="flow">
+Validator fail → build_fallback_reply("general_knowledge")
+→ "Yo barema ma sanga confirmed jankari chaina..."
+→ overlap 0.73 with previous fallback → fail again
+→ User: "Ke janakari?" (What information?)
+</div>
+<div class="fix"><strong>Fix:</strong> Make fallback replies turn-specific and unique. Lower overlap threshold for fallbacks, OR skip duplicate check when already in fallback path.</div>
+
+<div class="page-break"></div>
+
+<h2>4. Failure Chain Diagram</h2>
+<div class="flow">
+User: "500 Mbps chahiyo"
+  ↓
+detect_intent() → "greeting"          [BUG-2: "hi" in "chahiyo"]
+  ↓
+route_turn() → turn=greeting, suppress_catalog=True
+  ↓
+LLM generates reply with Mbps/package info
+  ↓
+validate_response() → catalog_in_non_sales_turn  [BUG-4]
+  ↓
+build_fallback_reply() → generic "confirmed jankari chaina"
+  ↓
+validate again → duplicate_response overlap=0.73  [BUG-7]
+  ↓
+User confused: "Ke janakari?"
+</div>
+
+<h2>5. Fix Priority &amp; Files</h2>
+<table>
+<tr><th>Priority</th><th>Fix</th><th>File(s)</th></tr>
+<tr><td><span class="badge-p0">P0</span></td><td>Word-boundary greeting detection</td><td><code>intent_engine.py</code></td></tr>
+<tr><td><span class="badge-p0">P0</span></td><td>Telegram user_id ≠ phone_collected</td><td><code>lead_extractor.py</code>, <code>session_state_manager.py</code></td></tr>
+<tr><td><span class="badge-p0">P0</span></td><td>Validator: skip catalog check on direct_answer</td><td><code>response_validator.py</code>, <code>ai_employee_engine.py</code></td></tr>
+<tr><td><span class="badge-p1">P1</span></td><td>Buying patterns: chahiyo, thiyo, rakhchhu, mbps</td><td><code>intent_engine.py</code>, <code>lead_extractor.py</code></td></tr>
+<tr><td><span class="badge-p1">P1</span></td><td>Language request: bhannus/bhannu pattern</td><td><code>turn_router.py</code></td></tr>
+<tr><td><span class="badge-p1">P1</span></td><td>Banepa in CITY_ALIASES + banepama typo</td><td><code>memory_extractor.py</code>, <code>lead_extractor.py</code></td></tr>
+<tr><td><span class="badge-p2">P2</span></td><td>Unique fallback text per turn</td><td><code>response_validator.py</code></td></tr>
+</table>
+
+<h2>6. Re-Test After Fix</h2>
+<ol>
+<li><code>bujhina maile</code> → correction turn (not greeting)</li>
+<li><code>Net jodnu thiyo bhaneko maile</code> → buying_intent / sales</li>
+<li><code>3 Mahinako kati ho?</code> → pricing turn</li>
+<li><code>500 Mbps chahiyo</code> → sales turn (phone_collected still False)</li>
+<li><code>Nepali ma bhannus na</code> → language_request + locked=True</li>
+<li><code>Banepama jodnu chha</code> → has_location=True (Banepa)</li>
+<li><code>Tapaiko naam ke ho?</code> → company_info direct answer (no validator reject)</li>
+<li><code>100 Mbps rakhchhu ma</code> → sales turn</li>
+</ol>
+
+<h2>7. Expected Log Lines After Fix</h2>
+<pre>INTENT_DETECTED intent=buying_intent     (not greeting on chahiyo)
+TURN_ROUTED turn=sales                   (not greeting on mbps chahiyo)
+SESSION_STATE_SYNCED phone_collected=False  (until real 98xxxxxxxx)
+RESPONSE_VALIDATED is_valid=True         (company_info, no catalog issue)
+LANGUAGE_LOCK_APPLIED locked=True        (after Nepali ma bhannus)
+TURN_ROUTED turn=language_request        (not general_knowledge)</pre>
+
+<div class="footer">
+Vyapar AI Employee — Render Log Bug Analysis — Generated June 4, 2026<br>
+Workspace: Z:\Vyapar AI\cursor &nbsp;|&nbsp; Service: Vyapar-AI-Agent (Render Production)
+</div>
+
+</body>
+</html>
