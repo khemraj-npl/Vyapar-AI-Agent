@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +97,24 @@ def _load_all_profiles() -> dict[str, Any]:
 
 def list_company_ids() -> list[str]:
     return sorted(_load_all_profiles().keys())
+
+
+def generate_widget_key() -> str:
+    """Public, per-tenant key used to route inbound web-widget chats."""
+    return secrets.token_urlsafe(12)
+
+
+def get_company_by_widget_key(widget_key: str) -> dict[str, Any] | None:
+    """Resolve a tenant from its public web-widget key (multi-tenant routing)."""
+    widget_key = (widget_key or "").strip()
+    if not widget_key:
+        return None
+    for company_id, profile in _load_all_profiles().items():
+        if isinstance(profile, dict) and profile.get("widget_key") == widget_key:
+            merged = dict(profile)
+            merged.setdefault("company_id", company_id)
+            return merged
+    return None
 
 
 def save_company(company_id: str, profile: dict[str, Any]) -> dict[str, Any]:

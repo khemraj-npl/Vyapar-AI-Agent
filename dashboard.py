@@ -6,6 +6,7 @@ from typing import Any
 
 import csv
 import io
+import re
 from datetime import date, datetime
 
 from fastapi import APIRouter, Form, Request
@@ -13,7 +14,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 import auth
-from company_manager import CompanyProfileError, get_company, save_company
+from company_manager import (
+    CompanyProfileError,
+    generate_widget_key,
+    get_company,
+    list_company_ids,
+    save_company,
+)
 from memory_db import ChatTurn, ConversationState, Invoice, Lead, OwnerUser, get_session
 
 logger = logging.getLogger("vyapar.dashboard")
@@ -83,6 +90,122 @@ async def logout() -> Any:
     response = RedirectResponse(url="/dashboard/login", status_code=303)
     response.delete_cookie(auth.SESSION_COOKIE)
     return response
+
+
+def _slugify(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    return slug[:40] or "biz"
+
+
+def _unique_company_id(business_name: str) -> str:
+    base = _slugify(business_name)
+    existing = set(list_company_ids())
+    candidate = base
+    while candidate in existing:
+        candidate = f"{base}-{generate_widget_key()[:4].lower()}"
+    return candidate
+
+
+@router.get("/signup", response_class=HTMLResponse)
+async def signup_form(request: Request) -> Any:
+    if _current_owner(request) is not None:
+        return RedirectResponse(url="/dashboard", status_code=303)
+    return templates.TemplateResponse(request, "signup.html", {"error": None})
+
+
+@router.post("/signup")
+async def signup_submit(
+    request: Request,
+    business_name: str = Form(...),
+    industry: str = Form("general"),
+    email: str = Form(...),
+    password: str = Form(...),
+) -> Any:
+    email = email.strip().lower()
+    business_name = business_name.strip()
+
+    def _error(msg: str) -> Any:
+        return templates.TemplateResponse(request, "signup.html", {"error": msg}, status_code=400)
+
+    if len(password) < 6:
+        return _error("Password must be at least 6 characters.")
+
+    with get_session() as session:
+        if session.query(OwnerUser).filter(OwnerUser.email == email).first() is not None:
+            return _error("An account with this email already exists.")
+
+    company_id = _unique_company_id(business_name)
+    profile = {
+        "company_id": company_id,
+        "company_name": business_name,
+        "business_type": industry.strip() or "general",
+        "industry": industry.strip() or "general",
+        "currency": "NPR",
+        "products": [],
+        "rules": [
+            f"Always represent {business_name} professionally and helpfully.",
+            "Do not invent prices, stock, or facts; use only the provided product/service details.",
+            "Keep replies concise and useful.",
+        ],
+        "widget_key": generate_widget_key(),
+    }
+    save_company(company_id, profile)
+
+    with get_session() as session:
+        owner = OwnerUser(
+            email=email,
+            password_hash=auth.hash_password(password),
+            company_id=company_id,
+            role="owner",
+        )
+        session.add(owner)
+        session.flush()
+        owner_id = owner.id
+
+    response = RedirectResponse(url="/dashboard", status_code=303)
+    response.set_cookie(
+        auth.SESSION_COOKIE,
+        auth.make_session_token(owner_id),
+        httponly=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,
+    )
+    logger.info("DASHBOARD_SIGNUP owner_id=%s company_id=%s", owner_id, company_id)
+    return response
+
+
+@router.get("/channels", response_class=HTMLResponse)
+async def channels_page(request: Request) -> Any:
+    owner = _current_owner(request)
+    if owner is None:
+        return _login_redirect()
+
+    try:
+        company = get_company(owner.company_id) or {}
+    except CompanyProfileError:
+        company = {}
+
+    widget_key = company.get("widget_key")
+    if not widget_key:
+        # Older tenants created before widgets existed: backfill a key.
+        widget_key = generate_widget_key()
+        company["widget_key"] = widget_key
+        save_company(owner.company_id, company)
+
+    origin = str(request.base_url).rstrip("/")
+    return templates.TemplateResponse(
+        request,
+        "channels.html",
+        {
+            "owner": owner,
+            "company_id": owner.company_id,
+            "widget_key": widget_key,
+            "origin": origin,
+            "chat_url": f"{origin}/widget/{widget_key}",
+            "embed_snippet": f'<script src="{origin}/widget/{widget_key}.js" async></script>',
+            "active": "channels",
+        },
+    )
 
 
 @router.get("", response_class=HTMLResponse)

@@ -20,6 +20,7 @@ from company_manager import CompanyProfileError, get_active_company_id, require_
 from dashboard import router as dashboard_router
 from memory_db import db_healthcheck, init_db
 from openai_engine import close_openai_client
+from web_widget import router as widget_router
 
 APP_NAME = "Vyapar AI Employee"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -252,6 +253,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=APP_NAME, lifespan=lifespan)
 app.include_router(dashboard_router)
+app.include_router(widget_router)
 
 if ALLOWED_CORS_ORIGINS:
     app.add_middleware(
