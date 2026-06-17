@@ -3,12 +3,14 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from company_manager import CompanyProfileError, require_company
+from admin_seed_hons_products import seed_hons_products
+from company_manager import CompanyProfileError, get_company_products, require_company
 from product_manager import (
     STOCK_STATUSES,
+    count_company_products,
     create_product,
     delete_product,
     get_product,
@@ -51,6 +53,34 @@ def _company_currency(company_id: str) -> str:
 
 def _serialize(record, company_id: str) -> dict[str, Any]:
     return product_to_dict(record, currency=_company_currency(company_id))
+
+
+HONS_SEED_COMPANY_ID = "hons"
+
+
+@router.get("/hons/seed-free")
+def seed_hons_catalog_free(
+    key: str | None = Query(default=None, description="Required when DASHBOARD_API_KEY is set"),
+) -> dict[str, Any]:
+    """Temporary one-shot seed for Render Free (no shell). Idempotent: skips existing product names."""
+    if DASHBOARD_API_KEY and key != DASHBOARD_API_KEY:
+        raise HTTPException(status_code=401, detail="invalid or missing seed key")
+
+    try:
+        require_company(HONS_SEED_COMPANY_ID)
+    except CompanyProfileError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    created = seed_hons_products(HONS_SEED_COMPANY_ID, skip_existing=True)
+    total = count_company_products(HONS_SEED_COMPANY_ID)
+    return {
+        "ok": True,
+        "message": f"Seeded {created} new product(s) for {HONS_SEED_COMPANY_ID}.",
+        "company_id": HONS_SEED_COMPANY_ID,
+        "created": created,
+        "total_active": total,
+        "catalog": get_company_products(HONS_SEED_COMPANY_ID),
+    }
 
 
 @router.get("/{company_id}/products")
