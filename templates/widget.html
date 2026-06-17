@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat — {{ company_name }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>html,body{height:100%;} #log::-webkit-scrollbar{width:6px;} #log::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px;}</style>
+</head>
+<body class="h-full bg-slate-50">
+  <div class="flex flex-col h-full max-w-xl mx-auto bg-white {{ '' if embed else 'shadow-xl sm:my-6 sm:rounded-2xl sm:h-[80vh]' }} overflow-hidden">
+    <header class="bg-indigo-600 text-white px-4 py-3">
+      <div class="font-semibold">{{ company_name }}</div>
+      <div class="text-xs text-indigo-200">AI Employee · usually replies instantly</div>
+    </header>
+    <div id="log" class="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50"></div>
+    <form id="form" class="border-t border-slate-200 p-3 flex gap-2">
+      <input id="msg" autocomplete="off" placeholder="Type a message…" class="flex-1 border border-slate-300 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-full px-5">Send</button>
+    </form>
+  </div>
+
+  <script>
+    var WIDGET_KEY = "{{ widget_key }}";
+    var log = document.getElementById("log");
+    var form = document.getElementById("form");
+    var input = document.getElementById("msg");
+
+    var sessionId = localStorage.getItem("vyapar_session_" + WIDGET_KEY);
+    if (!sessionId) {
+      sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem("vyapar_session_" + WIDGET_KEY, sessionId);
+    }
+
+    function bubble(text, who) {
+      var wrap = document.createElement("div");
+      wrap.className = "flex " + (who === "user" ? "justify-end" : "justify-start");
+      var b = document.createElement("div");
+      b.className = "rounded-2xl px-4 py-2 text-sm max-w-[80%] whitespace-pre-wrap " +
+        (who === "user" ? "bg-indigo-600 text-white" : "bg-white text-slate-800 shadow");
+      b.textContent = text;
+      wrap.appendChild(b);
+      log.appendChild(wrap);
+      log.scrollTop = log.scrollHeight;
+      return b;
+    }
+
+    bubble("Namaste! How can I help you today?", "bot");
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      bubble(text, "user");
+      var typing = bubble("…", "bot");
+      try {
+        var res = await fetch("/widget/" + WIDGET_KEY + "/message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, text: text })
+        });
+        var data = await res.json();
+        typing.textContent = data.reply || "Sorry, something went wrong.";
+      } catch (err) {
+        typing.textContent = "Network error. Please try again.";
+      }
+      log.scrollTop = log.scrollHeight;
+    });
+  </script>
+</body>
+</html>
