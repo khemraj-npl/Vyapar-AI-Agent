@@ -34,7 +34,9 @@ See `README.md` / `README_DEPLOY.md` for the product overview and Render deploy 
 ### Business owner dashboard
 - Server-rendered (Jinja2 + Tailwind CDN) multi-tenant dashboard mounted at `/dashboard`
   (`dashboard.py` + `templates/`). Pages: login, overview, conversations (inbox + transcript),
-  leads, products (CRUD), business profile (company info/contact/policies/rules editor).
+  leads (+ CSV export, "Bill" prefill), billing (invoices: create/mark-paid/delete + CSV +
+  outstanding/overdue summary), products (CRUD), business profile (company info/contact/
+  policies/rules editor). Invoices live in the `invoice` table, scoped by `company_id`.
 - Conversations are scoped to a company via the `conversation_state` table (a `ChatTurn` row has
   no `company_id`, so the inbox lists users that have a `ConversationState` for the owner's
   `company_id`, then shows that user's full `ChatTurn` transcript).
