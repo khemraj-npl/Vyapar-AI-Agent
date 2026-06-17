@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Business Profile — Vyapar AI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold text-slate-900">Business Profile &amp; Knowledge</h1>
+<p class="text-sm text-slate-500 mt-1">The more accurate this is, the better the AI employee can sell and support.</p>
+
+{% if saved %}
+<div class="mt-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">Saved. The AI employee will use these details immediately.</div>
+{% endif %}
+
+<form method="post" action="/dashboard/profile" class="mt-6 space-y-6">
+  <div class="bg-white rounded-xl shadow p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Company name</label>
+      <input name="company_name" value="{{ company.company_name or '' }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Business type</label>
+      <input name="business_type" value="{{ company.business_type or '' }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Industry</label>
+      <input name="industry" value="{{ company.industry or '' }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Currency</label>
+      <input name="currency" value="{{ company.currency or 'NPR' }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Location</label>
+      <input name="location" value="{{ company.location or '' }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Support hours</label>
+      <input name="support_hours" value="{{ company.support_hours or '' }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl shadow p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Phone</label>
+      <input name="phone" value="{{ contact.phone or '' }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Toll free</label>
+      <input name="toll_free" value="{{ contact.toll_free or '' }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Email</label>
+      <input name="email" value="{{ contact.email or '' }}" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl shadow p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Policies (one per line, <code>Key: Value</code>)</label>
+      <textarea name="policies" rows="5" class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono text-xs">{{ policies_text }}</textarea>
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Rules (one per line)</label>
+      <textarea name="rules" rows="5" class="w-full border border-slate-300 rounded px-2 py-1.5 text-xs">{{ rules_text }}</textarea>
+    </div>
+  </div>
+
+  <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded px-5 py-2">Save profile</button>
+</form>
+{% endblock %}

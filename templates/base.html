@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Vyapar AI Employee{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-800">
+  {% if owner %}
+  <div class="min-h-screen flex">
+    <aside class="w-60 bg-slate-900 text-slate-200 flex flex-col">
+      <div class="px-5 py-5 border-b border-slate-700">
+        <div class="text-lg font-semibold text-white">Vyapar AI</div>
+        <div class="text-xs text-slate-400 mt-1">{{ company_id }}</div>
+      </div>
+      <nav class="flex-1 px-3 py-4 space-y-1 text-sm">
+        <a href="/dashboard" class="block px-3 py-2 rounded {{ 'bg-indigo-600 text-white' if active == 'overview' else 'hover:bg-slate-800' }}">Overview</a>
+        <a href="/dashboard/conversations" class="block px-3 py-2 rounded {{ 'bg-indigo-600 text-white' if active == 'conversations' else 'hover:bg-slate-800' }}">Conversations</a>
+        <a href="/dashboard/leads" class="block px-3 py-2 rounded {{ 'bg-indigo-600 text-white' if active == 'leads' else 'hover:bg-slate-800' }}">Leads</a>
+        <a href="/dashboard/billing" class="block px-3 py-2 rounded {{ 'bg-indigo-600 text-white' if active == 'billing' else 'hover:bg-slate-800' }}">Billing</a>
+        <a href="/dashboard/products" class="block px-3 py-2 rounded {{ 'bg-indigo-600 text-white' if active == 'products' else 'hover:bg-slate-800' }}">Products</a>
+        <a href="/dashboard/profile" class="block px-3 py-2 rounded {{ 'bg-indigo-600 text-white' if active == 'profile' else 'hover:bg-slate-800' }}">Business Profile</a>
+      </nav>
+      <div class="px-5 py-4 border-t border-slate-700 text-xs">
+        <div class="text-slate-400 mb-2">{{ owner.email }}</div>
+        <a href="/dashboard/logout" class="text-rose-300 hover:text-rose-200">Log out</a>
+      </div>
+    </aside>
+    <main class="flex-1 p-8">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% else %}
+  {% block bare %}{% endblock %}
+  {% endif %}
+</body>
+</html>

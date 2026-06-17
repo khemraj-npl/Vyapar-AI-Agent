@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ai_employee_engine import generate_employee_reply, sanitize_user_text
 from company_manager import CompanyProfileError, get_active_company_id, require_company
+from dashboard import router as dashboard_router
 from memory_db import db_healthcheck, init_db
 from openai_engine import close_openai_client
 
@@ -243,6 +244,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=APP_NAME, lifespan=lifespan)
+app.include_router(dashboard_router)
 
 if ALLOWED_CORS_ORIGINS:
     app.add_middleware(

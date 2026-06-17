@@ -31,5 +31,24 @@ See `README.md` / `README_DEPLOY.md` for the product overview and Render deploy 
   You can exercise the core engine directly via `generate_employee_reply(user_id, text)`
   without any Telegram token.
 
+### Business owner dashboard
+- Server-rendered (Jinja2 + Tailwind CDN) multi-tenant dashboard mounted at `/dashboard`
+  (`dashboard.py` + `templates/`). Pages: login, overview, conversations (inbox + transcript),
+  leads (+ CSV export, "Bill" prefill), billing (invoices: create/mark-paid/delete + CSV +
+  outstanding/overdue summary), products (CRUD), business profile (company info/contact/
+  policies/rules editor). Invoices live in the `invoice` table, scoped by `company_id`.
+- Conversations are scoped to a company via the `conversation_state` table (a `ChatTurn` row has
+  no `company_id`, so the inbox lists users that have a `ConversationState` for the owner's
+  `company_id`, then shows that user's full `ChatTurn` transcript).
+- Create/update an owner account: `python admin_create_owner.py <email> <password> <company_id>`.
+  Owners only see data for their own `company_id`. Session is a signed cookie
+  (`auth.py`); set `DASHBOARD_SECRET_KEY` in production.
+- **Company profiles are now DB-backed** (`company_profile` table). On first load
+  `company_profiles.json` seeds the DB once (`COMPANY_PROFILES_SEEDED`); after that the DB
+  is the source of truth and the dashboard edits it. Editing `company_profiles.json` later
+  will NOT override an existing DB row — delete that company's `company_profile` row to
+  re-seed from the file. The AI engine reads profiles through `company_manager.get_company*()`,
+  unchanged, so dashboard edits are immediately reflected in replies.
+
 ### Tests / lint
 - The repo has no automated test suite and no configured linter/formatter.

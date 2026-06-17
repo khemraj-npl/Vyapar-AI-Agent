@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Leads — Vyapar AI{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-semibold text-slate-900">Leads</h1>
+    <p class="text-sm text-slate-500 mt-1">Customers captured by the AI employee.</p>
+  </div>
+  <a href="/dashboard/leads/export.csv" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded px-4 py-2">Export CSV</a>
+</div>
+
+<div class="bg-white rounded-xl shadow mt-6 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-slate-500 text-left">
+      <tr>
+        <th class="px-4 py-3 font-medium">Customer</th>
+        <th class="px-4 py-3 font-medium">Phone</th>
+        <th class="px-4 py-3 font-medium">Location</th>
+        <th class="px-4 py-3 font-medium">Interest</th>
+        <th class="px-4 py-3 font-medium">Stage</th>
+        <th class="px-4 py-3 font-medium">Score</th>
+        <th class="px-4 py-3 font-medium text-right"></th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {% for lead in leads %}
+      <tr>
+        <td class="px-4 py-2">{{ lead.customer_name or '—' }}</td>
+        <td class="px-4 py-2">{{ lead.phone or '—' }}</td>
+        <td class="px-4 py-2">{{ lead.location or '—' }}</td>
+        <td class="px-4 py-2">{{ lead.matched_product or lead.requested_speed or '—' }}</td>
+        <td class="px-4 py-2">
+          {% set colors = {'new':'bg-slate-100 text-slate-700','interested':'bg-amber-100 text-amber-700','qualified':'bg-sky-100 text-sky-700','hot':'bg-rose-100 text-rose-700'} %}
+          <span class="px-2 py-0.5 rounded text-xs font-medium {{ colors.get(lead.stage, 'bg-slate-100 text-slate-700') }}">{{ lead.stage }}</span>
+        </td>
+        <td class="px-4 py-2 font-medium">{{ lead.lead_score }}</td>
+        <td class="px-4 py-2 text-right">
+          <a href="/dashboard/billing?customer_name={{ (lead.customer_name or '') | urlencode }}&customer_phone={{ (lead.phone or '') | urlencode }}&description={{ (lead.matched_product or '') | urlencode }}" class="text-indigo-600 hover:text-indigo-800">Bill</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="px-4 py-6 text-center text-slate-400">No leads captured yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
