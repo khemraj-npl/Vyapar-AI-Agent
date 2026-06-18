@@ -185,9 +185,9 @@ SALES_TEXT_PATTERNS = [
     r"\bproduct\b",
     r"\bitem\b",
     r"\bstock\b",
-    r"mahina(?:ko)?\s+(?:kati|kathi)",
-    r"(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
-    r"ko\s+(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+    r"mahina(?:ko)?\s+kati",
+    r"kati\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+    r"ko\s+kati\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
 ]
 
 
@@ -373,7 +373,9 @@ def route_turn(
     company_id: str,
     language: str = "english",
 ) -> TurnRoute:
-    normalized = re.sub(r"\s+", " ", (text or "").lower()).strip()
+    from typing_normalize import normalize_typing
+
+    normalized = re.sub(r"\s+", " ", normalize_typing(text).lower()).strip()
     if not normalized:
         return TurnRoute(turn_type="general_knowledge", reason="empty")
 
