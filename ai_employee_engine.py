@@ -28,8 +28,12 @@ from memory_extractor import extract_memory_facts, extract_self_query_field, fac
 from memory_validator import validate_memory_facts
 from openai_engine import AIProviderError, reply_with_openai
 from products import (
+    build_catalog_list_reply,
+    build_product_price_reply,
     find_best_product_match,
     format_alternative_product,
+    is_catalog_list_query,
+    is_product_price_query,
     products_to_prompt,
     search_products,
 )
@@ -457,6 +461,48 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
 
     exact_product, alternative_product, requested_speed = find_best_product_match(clean_text, company_id=tenant_id)
 
+    if not turn_route.suppress_catalog and not turn_route.direct_answer:
+        full_catalog_block = products_to_prompt([], company_id=tenant_id, include_full_catalog=True)
+        if is_catalog_list_query(clean_text):
+            catalog_reply = build_catalog_list_reply(tenant_id, language=session.language)
+            if catalog_reply:
+                reply = _finalize_reply(
+                    user_id,
+                    tenant_id,
+                    catalog_reply,
+                    session=session,
+                    turn_route=turn_route,
+                    sales_mode=True,
+                    product_block=full_catalog_block,
+                )
+                save_chat_turn(user_id, "assistant", reply)
+                logger.info(
+                    "DIRECT_CATALOG_ANSWER user_id=%s company_id=%s",
+                    user_id,
+                    tenant_id,
+                )
+                return reply
+
+        if is_product_price_query(clean_text) and exact_product:
+            price_reply = build_product_price_reply(exact_product, language=session.language)
+            reply = _finalize_reply(
+                user_id,
+                tenant_id,
+                price_reply,
+                session=session,
+                turn_route=turn_route,
+                sales_mode=True,
+                product_block=full_catalog_block,
+            )
+            save_chat_turn(user_id, "assistant", reply)
+            logger.info(
+                "DIRECT_PRICE_ANSWER user_id=%s company_id=%s product=%s",
+                user_id,
+                tenant_id,
+                exact_product.get("name"),
+            )
+            return reply
+
     if should_process_lead(bundle) and not turn_route.suppress_lead_context:
         lead = upsert_lead(
             user_id=user_id,
@@ -519,7 +565,9 @@ async def generate_employee_reply(user_id: str, text: str, company_id: str | Non
 
     product_block = ""
     if not suppress_product_pitch:
-        if sales_mode and exact_product is None:
+        if is_catalog_list_query(clean_text):
+            product_block = products_to_prompt([], company_id=tenant_id, include_full_catalog=True)
+        elif sales_mode and exact_product is None:
             product_block = format_alternative_product(alternative_product)
         elif sales_mode:
             product_block = products_to_prompt(

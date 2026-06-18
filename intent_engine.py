@@ -19,8 +19,9 @@ COMMERCE_SIGNAL_PATTERNS = [
     r"lina\s+chh?[au]",
     r"rakhchhu",
     r"rakhne",
-    r"mahina(?:ko)?\s+kati",
-    r"kati\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+    r"mahina(?:ko)?\s+(?:kati|kathi)",
+    r"(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+    r"ko\s+(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
     r"\bproduct\b",
     r"\bitem\b",
     r"\bstock\b",
@@ -60,13 +61,15 @@ def _is_general_knowledge(text: str) -> bool:
 
 
 def _is_price_negotiation(text: str) -> bool:
-    if re.search(r"mahina(?:ko)?\s+kati", text):
+    if re.search(r"mahina(?:ko)?\s+(?:kati|kathi)", text):
         return True
-    if re.search(r"kati\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)", text):
+    if re.search(r"(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)", text):
+        return True
+    if re.search(r"ko\s+(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)", text):
         return True
     if any(word in text for word in ["price", "pricing", "cost", "how much", "rate", "discount", "negotiate"]):
         return True
-    if "kati" in text and re.search(r"\b(?:npr|rs|rupee|product|item|package|service|mahina)\b", text):
+    if ("kati" in text or "kathi" in text) and re.search(r"\b(?:npr|rs|rupee|product|item|package|service|mahina|mbps)\b", text):
         return True
     return False
 

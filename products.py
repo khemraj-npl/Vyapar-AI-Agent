@@ -105,13 +105,86 @@ def search_products(query: str, top_n: int = 3, company_id: str | None = None) -
         description = str(product.get("description") or "").lower()
         if description and any(token in description for token in query_lower.split() if len(token) > 3):
             score += 1
-        if any(token in query_lower for token in ("price", "kati", "cost", "rate", "package", "service", "plan", "product", "item")):
+        if any(token in query_lower for token in ("price", "kati", "kathi", "cost", "rate", "package", "service", "plan", "product", "item")):
             score += 1
         if score > 0:
             results.append((score, product))
 
     results.sort(key=lambda row: row[0], reverse=True)
     return [item for _, item in results[:top_n]]
+
+
+CATALOG_LIST_PATTERNS = [
+    r"ke\s+ke\s+chh?a",
+    r"kun\s+kun",
+    r"ke\s+chh?a\b",
+    r"ke\s+chh?incha",
+    r"package\s+haru",
+    r"product\s+haru",
+    r"what\s+(?:do\s+you\s+)?(?:have|sell|offer)",
+    r"which\s+(?:package|product|plan|service)s?",
+    r"available\s+chh?a",
+    r"list\s+(?:of\s+)?(?:package|product|plan|service)s?",
+    r"internet\s+package",
+]
+
+PRICE_QUERY_PATTERNS = [
+    r"(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+    r"ko\s+(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+    r"\bprice\b",
+    r"\bcost\b",
+    r"how\s+much",
+    r"\brate\b",
+    r"mahina(?:ko)?\s+(?:kati|kathi)",
+    r"\d+\s*mbps.*(?:kati|kathi|price|parchha|parcha)",
+]
+
+
+def is_catalog_list_query(text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", (text or "").lower()).strip()
+    return any(re.search(pattern, normalized) for pattern in CATALOG_LIST_PATTERNS)
+
+
+def is_product_price_query(text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", (text or "").lower()).strip()
+    return any(re.search(pattern, normalized) for pattern in PRICE_QUERY_PATTERNS)
+
+
+def build_catalog_list_reply(company_id: str, *, language: str = "nepali") -> str | None:
+    products = get_company_products(company_id)
+    if not products:
+        return None
+
+    catalog = get_catalog_label(company_id)
+    if language == "nepali":
+        lines = [f"Hamro {catalog} ma ahile yo active packages haru chhan:"]
+        for product in products:
+            lines.append(f"• {product['name']} — {product['price']}")
+        lines.append("Kun package chahiyo bhane bhannus, ma detail dinchu.")
+        return "\n".join(lines)
+
+    lines = [f"Our active {catalog}:"]
+    for product in products:
+        lines.append(f"• {product['name']} — {product['price']}")
+    lines.append("Tell me which one you need and I can share more details.")
+    return "\n".join(lines)
+
+
+def build_product_price_reply(product: dict[str, Any], *, language: str = "nepali") -> str:
+    name = str(product.get("name") or "Package")
+    price = str(product.get("price") or "")
+    description = str(product.get("description") or "").strip()
+
+    if language == "nepali":
+        reply = f"{name} ko price {price} ho."
+        if description:
+            reply += f" {description}"
+        return reply
+
+    reply = f"The price of {name} is {price}."
+    if description:
+        reply += f" {description}"
+    return reply
 
 
 def _catalog_full_list_limit() -> int:

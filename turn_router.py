@@ -185,8 +185,9 @@ SALES_TEXT_PATTERNS = [
     r"\bproduct\b",
     r"\bitem\b",
     r"\bstock\b",
-    r"mahina(?:ko)?\s+kati",
-    r"kati\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+    r"mahina(?:ko)?\s+(?:kati|kathi)",
+    r"(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
+    r"ko\s+(?:kati|kathi)\s+(?:parchha|parcha|ho|cha|hunchha|lagcha|lagchha)",
 ]
 
 
